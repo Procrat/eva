@@ -1,0 +1,11 @@
+[package]
+name = "eva-mind"
+version = "0.0.1"
+authors = ["Stijn Seghers <stijnseghers@gmail.com>"]
+
+[dependencies]
+chrono = "0.2"
+derive-new = "0.4"
+
+[[bin]]
+name = "eva"

@@ -99,25 +99,17 @@ mod tests {
 
     const DATA: &i8 = &9;
 
-    macro_rules! assert_let {
-        ($left:pat = $right:expr) => (
-            if let $left = $right {} else {
-                panic!("assertion failed: let {:?} = {:?}", stringify!($left), stringify!($right))
-            }
-        )
-    }
-
     #[test]
     fn test_schedule_exact() {
         let mut tree: ScheduleTree<i8, i8> = ScheduleTree::new();
         let scheduled = tree.schedule_exact(5, 5, DATA);
         assert!(scheduled);
         assert!(tree.scope == Some(5..10));
-        assert_let!(Some(Node::Leaf { start: 5, end: 10, ..}) = tree.root);
+        assert_matches!(tree.root, Some(Node::Leaf { start: 5, end: 10, ..}));
 
         let scheduled = tree.schedule_exact(12, 5, DATA);
         assert!(scheduled);
         assert!(tree.scope == Some(5..17));
-        assert_let!(Some(Node::Intermediate { free: Range { start: 10, end: 12 }, .. }) = tree.root);
+        assert_matches!(tree.root, Some(Node::Intermediate { free: Range { start: 10, end: 12 }, .. }));
     }
 }

@@ -7,5 +7,8 @@ authors = ["Stijn Seghers <stijnseghers@gmail.com>"]
 chrono = "0.2"
 derive-new = "0.4"
 
+[dev-dependencies]
+assert_matches = "1.1"
+
 [[bin]]
 name = "eva"

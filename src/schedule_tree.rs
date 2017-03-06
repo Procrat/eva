@@ -1,6 +1,6 @@
 use std::fmt::Debug;
-use std::ops::{Add, Sub, Range};
 use std::mem;
+use std::ops::{Add, Range, Sub};
 
 
 #[derive(Debug)]
@@ -11,11 +11,7 @@ pub struct ScheduleTree<'a, T: 'a, D: 'a> {
 
 #[derive(Debug, PartialEq)]
 enum Node<'a, T: 'a, D: 'a> {
-    Leaf {
-        start: T,
-        end: T,
-        data: &'a D,
-    },
+    Leaf { start: T, end: T, data: &'a D },
     Intermediate {
         left: Box<Node<'a, T, D>>,
         right: Box<Node<'a, T, D>>,
@@ -26,7 +22,10 @@ enum Node<'a, T: 'a, D: 'a> {
 
 impl<'a, T: Copy + Clone + Ord + Debug, D: Debug> ScheduleTree<'a, T, D> {
     pub fn new() -> Self {
-        ScheduleTree { root: None, scope: None }
+        ScheduleTree {
+            root: None,
+            scope: None,
+        }
     }
 
     pub fn schedule_exact<W>(&mut self, start: T, duration: W, data: &'a D) -> bool
@@ -36,24 +35,44 @@ impl<'a, T: Copy + Clone + Ord + Debug, D: Debug> ScheduleTree<'a, T, D> {
         let end = start + duration;
 
         if let None = self.root {
-            self.root = Some(Node::Leaf { start: start, end: end, data: data });
+            self.root = Some(Node::Leaf {
+                start: start,
+                end: end,
+                data: data,
+            });
             self.scope = Some(start..end);
-            return true
+            return true;
         }
 
         let scope = self.scope.as_ref().cloned().unwrap();
         if end <= scope.start {
-            let new_node = Node::Leaf { start: start, end: end, data: data };
+            let new_node = Node::Leaf {
+                start: start,
+                end: end,
+                data: data,
+            };
             let root = self.root.take().unwrap();
-            self.root = Some(Node::Intermediate { left: Box::new(new_node), right: Box::new(root), free: end..scope.start });
+            self.root = Some(Node::Intermediate {
+                left: Box::new(new_node),
+                right: Box::new(root),
+                free: end..scope.start,
+            });
             self.scope = Some(start..scope.end);
-            return true
+            return true;
         } else if scope.end <= start {
-            let new_node = Node::Leaf { start: start, end: end, data: data };
+            let new_node = Node::Leaf {
+                start: start,
+                end: end,
+                data: data,
+            };
             let root = self.root.take().unwrap();
-            self.root = Some(Node::Intermediate { left: Box::new(root), right: Box::new(new_node), free: scope.end..start });
+            self.root = Some(Node::Intermediate {
+                left: Box::new(root),
+                right: Box::new(new_node),
+                free: scope.end..start,
+            });
             self.scope = Some(scope.start..end);
-            return true
+            return true;
         }
 
         self.root.as_mut().unwrap().insert(start, end, data)
@@ -78,17 +97,37 @@ impl<'a, T: Copy + Ord + Debug, D> Node<'a, T, D> {
                 } else if free.end <= start {
                     right.insert(start, end, data)
                 } else if free.start <= start && end <= free.end {
-                    let new_node = Node::Leaf { start: start, end: end, data: data };
-                    let prev_right = mem::replace(right, Box::new(Node::Leaf { start: start, end: end, data: data }));
-                    *right = Box::new(Node::Intermediate { left: Box::new(new_node), right: prev_right, free: end..free.end });
+                    // [start, end] completely within self.free
+                    let new_node = Node::Leaf {
+                        start: start,
+                        end: end,
+                        data: data,
+                    };
+                    swap_using(right, |right_value| {
+                        Box::new(Node::Intermediate {
+                            left: new_node.into(),
+                            right: right_value,
+                            free: end..free.end,
+                        })
+                    });
                     *free = free.start..start;
                     true
                 } else {
+                    // Overlap between [start, end] and self.free
                     false
                 }
-            },
+            }
             Node::Leaf { .. } => false,
         }
+    }
+}
+
+fn swap_using<T, F>(x: &mut T, f: F)
+    where F: FnOnce(T) -> T
+{
+    unsafe {
+        let y = mem::replace(x, mem::uninitialized());
+        *x = f(y);
     }
 }
 

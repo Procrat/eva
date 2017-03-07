@@ -6,6 +6,7 @@ authors = ["Stijn Seghers <stijnseghers@gmail.com>"]
 [dependencies]
 chrono = "0.2"
 derive-new = "0.4"
+take_mut = "0.1"
 
 [dev-dependencies]
 assert_matches = "1.1"

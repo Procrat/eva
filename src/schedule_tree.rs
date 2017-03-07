@@ -1,6 +1,7 @@
 use std::fmt::Debug;
-use std::mem;
 use std::ops::{Add, Range, Sub};
+
+use take_mut;
 
 
 #[derive(Debug)]
@@ -103,7 +104,7 @@ impl<'a, T: Copy + Ord + Debug, D> Node<'a, T, D> {
                         end: end,
                         data: data,
                     };
-                    swap_using(right, |right_value| {
+                    take_mut::take(right, |right_value| {
                         Box::new(Node::Intermediate {
                             left: new_node.into(),
                             right: right_value,
@@ -119,15 +120,6 @@ impl<'a, T: Copy + Ord + Debug, D> Node<'a, T, D> {
             }
             Node::Leaf { .. } => false,
         }
-    }
-}
-
-fn swap_using<T, F>(x: &mut T, f: F)
-    where F: FnOnce(T) -> T
-{
-    unsafe {
-        let y = mem::replace(x, mem::uninitialized());
-        *x = f(y);
     }
 }
 

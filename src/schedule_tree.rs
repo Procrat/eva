@@ -34,24 +34,20 @@ impl<'a, T: Copy + Clone + Ord + Debug, D: Debug> ScheduleTree<'a, T, D> {
               W: Add<W, Output = W> + Add<T, Output = T> + Sub<W, Output = W>
     {
         let end = start + duration;
+        let new_node = Node::Leaf {
+            start: start,
+            end: end,
+            data: data,
+        };
 
-        if let None = self.root {
-            self.root = Some(Node::Leaf {
-                start: start,
-                end: end,
-                data: data,
-            });
+        if self.root.is_none() {
+            self.root = Some(new_node);
             self.scope = Some(start..end);
             return true;
         }
 
         let scope = self.scope.as_ref().cloned().unwrap();
         if end <= scope.start {
-            let new_node = Node::Leaf {
-                start: start,
-                end: end,
-                data: data,
-            };
             let root = self.root.take().unwrap();
             self.root = Some(Node::Intermediate {
                 left: Box::new(new_node),
@@ -61,11 +57,6 @@ impl<'a, T: Copy + Clone + Ord + Debug, D: Debug> ScheduleTree<'a, T, D> {
             self.scope = Some(start..scope.end);
             return true;
         } else if scope.end <= start {
-            let new_node = Node::Leaf {
-                start: start,
-                end: end,
-                data: data,
-            };
             let root = self.root.take().unwrap();
             self.root = Some(Node::Intermediate {
                 left: Box::new(root),
@@ -76,7 +67,7 @@ impl<'a, T: Copy + Clone + Ord + Debug, D: Debug> ScheduleTree<'a, T, D> {
             return true;
         }
 
-        self.root.as_mut().unwrap().insert(start, end, data)
+        self.root.as_mut().unwrap().insert(start, end, new_node)
     }
 
     pub fn schedule_after<W>(&self, start: T, duration: W, max_end: Option<T>, data: &'a D) -> bool
@@ -90,23 +81,18 @@ impl<'a, T: Copy + Clone + Ord + Debug, D: Debug> ScheduleTree<'a, T, D> {
 }
 
 impl<'a, T: Copy + Ord + Debug, D> Node<'a, T, D> {
-    fn insert(&mut self, start: T, end: T, data: &'a D) -> bool {
+    fn insert(&mut self, start: T, end: T, sub_tree: Node<'a, T, D>) -> bool {
         match *self {
             Node::Intermediate { ref mut left, ref mut right, ref mut free } => {
                 if end <= free.start {
-                    left.insert(start, end, data)
+                    left.insert(start, end, sub_tree)
                 } else if free.end <= start {
-                    right.insert(start, end, data)
+                    right.insert(start, end, sub_tree)
                 } else if free.start <= start && end <= free.end {
                     // [start, end] completely within self.free
-                    let new_node = Node::Leaf {
-                        start: start,
-                        end: end,
-                        data: data,
-                    };
                     take_mut::take(right, |right_value| {
                         Box::new(Node::Intermediate {
-                            left: new_node.into(),
+                            left: Box::new(sub_tree),
                             right: right_value,
                             free: end..free.end,
                         })
@@ -133,14 +119,38 @@ mod tests {
     #[test]
     fn test_schedule_exact() {
         let mut tree: ScheduleTree<i8, i8> = ScheduleTree::new();
+
+        // 5..10
         let scheduled = tree.schedule_exact(5, 5, DATA);
         assert!(scheduled);
         assert!(tree.scope == Some(5..10));
-        assert_matches!(tree.root, Some(Node::Leaf { start: 5, end: 10, ..}));
+        assert_matches!(tree.root, Some(Node::Leaf { start: 5, end: 10, .. }));
 
-        let scheduled = tree.schedule_exact(12, 5, DATA);
+        //   free:10..13
+        //    /        \
+        // 5..10      13..18
+        let scheduled = tree.schedule_exact(13, 5, DATA);
         assert!(scheduled);
-        assert!(tree.scope == Some(5..17));
-        assert_matches!(tree.root, Some(Node::Intermediate { free: Range { start: 10, end: 12 }, .. }));
+        assert!(tree.scope == Some(5..18));
+        assert_matches!(tree.root, Some(Node::Intermediate {
+            free: Range { start: 10, end: 13 },
+            right: box Node::Leaf { start: 13, end: 18, .. },
+        .. }));
+
+        //   free:10..10
+        //    /        \
+        // 5..10     free:12..13
+        //             /     \
+        //          10..12  13..18
+        let scheduled = tree.schedule_exact(10, 2, DATA);
+        assert!(scheduled);
+        assert!(tree.scope == Some(5..18));
+        assert_matches!(tree.root, Some(Node::Intermediate {
+            free: Range { start: 10, end: 10 },
+            right: box Node::Intermediate {
+                free: Range { start: 12, end: 13 },
+                left: box Node::Leaf { start: 10, end: 12, .. },
+            .. },
+        .. }));
     }
 }

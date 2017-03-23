@@ -5,13 +5,13 @@ use take_mut;
 
 
 #[derive(Debug)]
-pub struct ScheduleTree<'a, T: 'a, D: 'a> {
+pub struct ScheduleTree<'a, T, D: 'a> {
     root: Option<Node<'a, T, D>>,
     scope: Option<Range<T>>,
 }
 
 #[derive(Debug, PartialEq)]
-enum Node<'a, T: 'a, D: 'a> {
+pub enum Node<'a, T, D: 'a> {
     Leaf { start: T, end: T, data: &'a D },
     Intermediate {
         left: Box<Node<'a, T, D>>,
@@ -20,8 +20,10 @@ enum Node<'a, T: 'a, D: 'a> {
     },
 }
 
-
-impl<'a, T: Copy + Clone + Ord + Debug, D: Debug> ScheduleTree<'a, T, D> {
+impl<'a, T, D> ScheduleTree<'a, T, D>
+    where T: Copy + Clone + Ord + Debug,
+          D: Debug
+{
     pub fn new() -> Self {
         ScheduleTree {
             root: None,
@@ -29,9 +31,12 @@ impl<'a, T: Copy + Clone + Ord + Debug, D: Debug> ScheduleTree<'a, T, D> {
         }
     }
 
+    pub fn iter(&self) -> Iter<T, D> {
+        Iter { path: self.root.iter().collect() }
+    }
+
     pub fn schedule_exact<W>(&mut self, start: T, duration: W, data: &'a D) -> bool
-        where T: Add<W, Output = T> + Sub<T, Output = W> + Sub<W, Output = T>,
-              W: Add<W, Output = W> + Add<T, Output = T> + Sub<W, Output = W>
+        where T: Add<W, Output = T>
     {
         let end = start + duration;
         let new_node = Node::Leaf {
@@ -46,28 +51,34 @@ impl<'a, T: Copy + Clone + Ord + Debug, D: Debug> ScheduleTree<'a, T, D> {
             return true;
         }
 
-        let scope = self.scope.as_ref().cloned().unwrap();
+        let scope = self.scope
+            .as_ref()
+            .cloned()
+            .unwrap();
         if end <= scope.start {
             let root = self.root.take().unwrap();
             self.root = Some(Node::Intermediate {
-                left: Box::new(new_node),
-                right: Box::new(root),
-                free: end..scope.start,
-            });
+                                 left: Box::new(new_node),
+                                 right: Box::new(root),
+                                 free: end..scope.start,
+                             });
             self.scope = Some(start..scope.end);
             return true;
         } else if scope.end <= start {
             let root = self.root.take().unwrap();
             self.root = Some(Node::Intermediate {
-                left: Box::new(root),
-                right: Box::new(new_node),
-                free: scope.end..start,
-            });
+                                 left: Box::new(root),
+                                 right: Box::new(new_node),
+                                 free: scope.end..start,
+                             });
             self.scope = Some(scope.start..end);
             return true;
         }
 
-        self.root.as_mut().unwrap().insert(start, end, new_node)
+        self.root
+            .as_mut()
+            .unwrap()
+            .insert(start, end, new_node)
     }
 
     pub fn schedule_after<W>(&self, start: T, duration: W, max_end: Option<T>, data: &'a D) -> bool
@@ -80,7 +91,9 @@ impl<'a, T: Copy + Clone + Ord + Debug, D: Debug> ScheduleTree<'a, T, D> {
     }
 }
 
-impl<'a, T: Copy + Ord + Debug, D> Node<'a, T, D> {
+impl<'a, T, D> Node<'a, T, D>
+    where T: Copy + Ord + Debug
+{
     fn insert(&mut self, start: T, end: T, sub_tree: Node<'a, T, D>) -> bool {
         match *self {
             Node::Intermediate { ref mut left, ref mut right, ref mut free } => {
@@ -92,10 +105,10 @@ impl<'a, T: Copy + Ord + Debug, D> Node<'a, T, D> {
                     // [start, end] completely within self.free
                     take_mut::take(right, |right_value| {
                         Box::new(Node::Intermediate {
-                            left: Box::new(sub_tree),
-                            right: right_value,
-                            free: end..free.end,
-                        })
+                                     left: Box::new(sub_tree),
+                                     right: right_value,
+                                     free: end..free.end,
+                                 })
                     });
                     *free = free.start..start;
                     true
@@ -106,6 +119,42 @@ impl<'a, T: Copy + Ord + Debug, D> Node<'a, T, D> {
             }
             Node::Leaf { .. } => false,
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct Entry<'a, T, D: 'a> {
+    pub start: T,
+    pub end: T,
+    pub data: &'a D,
+}
+
+#[derive(Debug)]
+pub struct Iter<'b, 'a: 'b, T: 'b, D: 'a> {
+    path: Vec<&'b Node<'a, T, D>>,
+}
+
+impl<'b, 'a, T, D> Iterator for Iter<'b, 'a, T, D>
+    where T: Copy
+{
+    type Item = Entry<'a, T, D>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.path.pop().and_then(|mut current| {
+            while let Node::Intermediate { ref left, ref right, .. } = *current {
+                self.path.push(right);
+                current = left;
+            }
+            if let Node::Leaf { start, end, ref data } = *current {
+                Some(Entry {
+                         start: start,
+                         end: end,
+                         data: *data,
+                     })
+            } else {
+                None
+            }
+        })
     }
 }
 

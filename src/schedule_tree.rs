@@ -31,7 +31,7 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
         }
     }
 
-    pub fn iter(&self) -> Iter<T, D> {
+    pub fn iter<'b>(&'b self) -> Iter<'b, 'a, T, D> {
         Iter { path: self.root.iter().collect() }
     }
 
@@ -145,11 +145,11 @@ impl<'b, 'a, T, D> Iterator for Iter<'b, 'a, T, D>
                 self.path.push(right);
                 current = left;
             }
-            if let Node::Leaf { start, end, ref data } = *current {
+            if let Node::Leaf { start, end, data } = *current {
                 Some(Entry {
                          start: start,
                          end: end,
-                         data: *data,
+                         data: data,
                      })
             } else {
                 None

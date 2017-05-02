@@ -14,6 +14,12 @@ mod schedule_tree;
 use chrono::{DateTime, Duration, UTC};
 use schedule_tree::ScheduleTree;
 
+
+pub fn add(name: &str) {}
+pub fn remove(name: &str) {}
+pub fn print_schedule() {}
+
+
 #[derive(Debug, PartialEq, new, Clone)]
 pub struct Task<'a> {
     content: &'a str,

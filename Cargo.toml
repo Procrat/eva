@@ -1,10 +1,11 @@
 [package]
-name = "eva-mind"
+name = "eva"
 version = "0.0.1"
 authors = ["Stijn Seghers <stijnseghers@gmail.com>"]
 
 [dependencies]
 chrono = "0.2"
+clap = "2.23"
 derive-new = "0.4"
 take_mut = "0.1"
 

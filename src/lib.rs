@@ -1,17 +1,19 @@
 #![feature(box_patterns)]
 
-#[macro_use]
-extern crate derive_new;
+#[macro_use] extern crate derive_new;
 extern crate chrono;
+#[macro_use] extern crate diesel;
+#[macro_use] extern crate diesel_codegen;
 extern crate take_mut;
 
 #[cfg(test)]
-#[macro_use]
-extern crate assert_matches;
+#[macro_use] extern crate assert_matches;
 
+mod db;
 mod schedule_tree;
 
 use chrono::{DateTime, Duration, UTC};
+use diesel::LoadDsl;
 use schedule_tree::ScheduleTree;
 
 
@@ -21,23 +23,24 @@ pub fn print_schedule() {}
 
 
 #[derive(Debug, PartialEq, new, Clone)]
-pub struct Task<'a> {
-    content: &'a str,
-    deadline: Option<DateTime<UTC>>,
+pub struct Task {
+    id: u32,
+    content: String,
+    deadline: DateTime<UTC>,
     duration: Duration,
-    importance: u8,
+    importance: u32,
 }
 
 #[derive(Debug, new)]
-struct ScheduledTask<'b, 'a: 'b> {
-    task: &'b Task<'a>,
+struct ScheduledTask<'a> {
+    task: &'a Task,
     when: DateTime<UTC>,
 }
 
 #[derive(Debug)]
-pub struct Schedule<'b, 'a: 'b>(Vec<ScheduledTask<'b, 'a>>);
+pub struct Schedule<'a>(Vec<ScheduledTask<'a>>);
 
-impl<'b, 'a> Schedule<'b, 'a> {
+impl<'a> Schedule<'a> {
     /// Schedules tasks according to their deadlines, importance and duration.
     /// First, all tasks --- starting with the most important until the least important --- are
     /// scheduled as close as possible to their deadline.
@@ -48,11 +51,10 @@ impl<'b, 'a> Schedule<'b, 'a> {
     /// Args:
     ///     tasks: ordered list of tasks to schedule, ordered from most important to least
     ///     important.
-    pub fn schedule<'c: 'b>(tasks: &'c [Task<'a>]) -> Schedule<'b, 'a> {
+    pub fn schedule<'b: 'a>(tasks: &'b [Task]) -> Schedule<'a> {
         let mut tree = ScheduleTree::new();
         for task in tasks {
-            // TODO unwrap
-            let start = task.deadline.unwrap() - task.duration;
+            let start = task.deadline - task.duration;
             // TODO schedule close before the deadline
             tree.schedule_exact(start, task.duration, task);
         }
@@ -86,16 +88,18 @@ mod tests {
         assert!(schedule.0[0].when < schedule.0[1].when);
     }
 
-    fn taskset1<'a>() -> Vec<Task<'a>> {
+    fn taskset1() -> Vec<Task> {
         let task1 = Task {
-            content: "do stuff",
-            deadline: Some(UTC::now() + Duration::days(3)),
+            id: 1,
+            content: "do stuff".to_string(),
+            deadline: UTC::now() + Duration::days(3),
             duration: Duration::hours(2),
             importance: 5,
         };
         let task2 = Task {
-            content: "contemplate life",
-            deadline: Some(UTC::now() + Duration::days(4)),
+            id: 2,
+            content: "contemplate life".to_string(),
+            deadline: UTC::now() + Duration::days(4),
             duration: Duration::hours(12),
             importance: 6,
         };

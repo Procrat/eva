@@ -51,10 +51,7 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
             return true;
         }
 
-        let scope = self.scope
-            .as_ref()
-            .cloned()
-            .unwrap();
+        let scope = self.scope.as_ref().cloned().unwrap();
         if end <= scope.start {
             let root = self.root.take().unwrap();
             self.root = Some(Node::Intermediate {
@@ -75,10 +72,7 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
             return true;
         }
 
-        self.root
-            .as_mut()
-            .unwrap()
-            .insert(start, end, new_node)
+        self.root.as_mut().unwrap().insert(start, end, new_node)
     }
 
     pub fn schedule_after<W>(&self, start: T, duration: W, max_end: Option<T>, data: &'a D) -> bool
@@ -96,7 +90,11 @@ impl<'a, T, D> Node<'a, T, D>
 {
     fn insert(&mut self, start: T, end: T, sub_tree: Node<'a, T, D>) -> bool {
         match *self {
-            Node::Intermediate { ref mut left, ref mut right, ref mut free } => {
+            Node::Intermediate {
+                ref mut left,
+                ref mut right,
+                ref mut free,
+            } => {
                 if end <= free.start {
                     left.insert(start, end, sub_tree)
                 } else if free.end <= start {
@@ -140,21 +138,27 @@ impl<'b, 'a, T, D> Iterator for Iter<'b, 'a, T, D>
     type Item = Entry<'a, T, D>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.path.pop().and_then(|mut current| {
-            while let Node::Intermediate { ref left, ref right, .. } = *current {
-                self.path.push(right);
-                current = left;
-            }
-            if let Node::Leaf { start, end, data } = *current {
-                Some(Entry {
-                         start: start,
-                         end: end,
-                         data: data,
-                     })
-            } else {
-                None
-            }
-        })
+        self.path
+            .pop()
+            .and_then(|mut current| {
+                while let Node::Intermediate {
+                              ref left,
+                              ref right,
+                              ..
+                          } = *current {
+                    self.path.push(right);
+                    current = left;
+                }
+                if let Node::Leaf { start, end, data } = *current {
+                    Some(Entry {
+                             start: start,
+                             end: end,
+                             data: data,
+                         })
+                } else {
+                    None
+                }
+            })
     }
 }
 

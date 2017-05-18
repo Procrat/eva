@@ -1,35 +1,106 @@
 #![feature(box_patterns)]
 
-#[macro_use] extern crate derive_new;
+#[macro_use]
+extern crate derive_new;
 extern crate chrono;
-#[macro_use] extern crate diesel;
-#[macro_use] extern crate diesel_codegen;
+#[macro_use]
+extern crate diesel;
+#[macro_use]
+extern crate diesel_codegen;
 extern crate take_mut;
 
 #[cfg(test)]
-#[macro_use] extern crate assert_matches;
+#[macro_use]
+extern crate assert_matches;
 
 mod db;
 mod schedule_tree;
 
-use chrono::{DateTime, Duration, UTC};
-use diesel::LoadDsl;
+use chrono::{DateTime, Duration, TimeZone, UTC};
+use diesel::prelude::*;
+
 use schedule_tree::ScheduleTree;
 
 
-pub fn add(name: &str) {}
-pub fn remove(name: &str) {}
-pub fn print_schedule() {}
+pub fn add(content: &str, deadline: &str, duration_hours: f64, importance: u32) {
+    use db::tasks::dsl::tasks;
+
+    let connection = db::make_connection();
+
+    let deadline =
+        UTC.datetime_from_str(deadline, "%-d %b %Y %-H:%M")
+            .expect("Could not parse deadline. Please provide something like 4 Jul 6:05.");
+    let duration = Duration::minutes((60.0 * duration_hours) as i64);
+    let new_task = Task {
+        id: None,
+        content: content.to_string(),
+        deadline: deadline,
+        duration: duration,
+        importance: importance,
+    };
+
+    diesel::insert(&new_task)
+        .into(tasks)
+        .execute(&connection)
+        .expect("Error saving task.");
+}
+
+pub fn remove(id: u32) {
+    use db::tasks::dsl::tasks;
+
+    let connection = db::make_connection();
+
+    diesel::delete(tasks.find(id as i32))
+        .execute(&connection)
+        .expect("Error removing task.");
+}
+
+pub fn print_schedule() {
+    use db::tasks::dsl::tasks;
+
+    let connection = db::make_connection();
+
+    let tasks_ = tasks
+        .load::<Task>(&connection)
+        .expect("Error retrieving tasks.");
+    for task in tasks_ {
+        let prefix = match task.id {
+            Some(id) => format!("{}.", id),
+            None => "- ".to_string(),
+        };
+        println!("{} {}\n    (deadline: {}, duration: {}, importance: {})",
+                 prefix,
+                 task.content,
+                 task.deadline,
+                 task.duration,
+                 task.importance);
+    }
+}
 
 
-#[derive(Debug, PartialEq, new, Clone)]
+#[derive(Debug, Eq, new, Clone)]
 pub struct Task {
-    id: u32,
+    id: Option<u32>,
     content: String,
     deadline: DateTime<UTC>,
     duration: Duration,
     importance: u32,
 }
+
+impl PartialEq for Task {
+    fn eq(&self, other: &Self) -> bool {
+        let equal_id = match (self.id, other.id) {
+            (Some(id1), Some(id2)) => id1 == id2,
+            _ => true,
+        };
+        equal_id &&
+            self.content == other.content &&
+            self.deadline == other.deadline &&
+            self.duration == other.duration &&
+            self.importance == other.importance
+    }
+}
+
 
 #[derive(Debug, new)]
 struct ScheduledTask<'a> {
@@ -58,9 +129,9 @@ impl<'a> Schedule<'a> {
             // TODO schedule close before the deadline
             tree.schedule_exact(start, task.duration, task);
         }
-        let importance_schedule = tree.iter().map(|entry| {
-            ScheduledTask::new(entry.data, entry.start)
-        }).collect();
+        let importance_schedule = tree.iter()
+            .map(|entry| ScheduledTask::new(entry.data, entry.start))
+            .collect();
         // TODO let urgent_first_schedule = importance_schedule
         Schedule(importance_schedule)
     }
@@ -90,14 +161,14 @@ mod tests {
 
     fn taskset1() -> Vec<Task> {
         let task1 = Task {
-            id: 1,
+            id: None,
             content: "do stuff".to_string(),
             deadline: UTC::now() + Duration::days(3),
             duration: Duration::hours(2),
             importance: 5,
         };
         let task2 = Task {
-            id: 2,
+            id: None,
             content: "contemplate life".to_string(),
             deadline: UTC::now() + Duration::days(4),
             duration: Duration::hours(12),

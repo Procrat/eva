@@ -1,16 +1,16 @@
-use super::Task;
-
 use std::io;
 
 use chrono::{DateTime, Duration, NaiveDateTime, UTC};
-use diesel::prelude::*;
 use diesel::backend::Backend;
-use diesel::insertable::ColumnInsertValue;
 use diesel::expression::AsExpression;
 use diesel::expression::helper_types::AsNullableExpr;
+use diesel::insertable::ColumnInsertValue;
+use diesel::prelude::*;
 use diesel::query_builder::insert_statement::{InsertStatement, IntoInsertStatement};
 use diesel::sqlite::{Sqlite, SqliteConnection};
 use diesel::types::{FromSql, HasSqlType, Integer, Text};
+
+use super::Task;
 
 
 const DATABASE_URL: &'static str = "db.sqlite";
@@ -33,9 +33,8 @@ pub fn make_connection() -> SqliteConnection {
 }
 
 fn make_connection_with(database_url: &str) -> SqliteConnection {
-    let connection =
-        SqliteConnection::establish(database_url).expect(&format!("Error connecting to {}",
-                                                                  database_url));
+    let connection = SqliteConnection::establish(database_url)
+        .expect(&format!("Error connecting to {}", database_url));
     // TODO run instead of run_with_output + unwrap
     embedded_migrations::run_with_output(&connection, &mut io::stdout()).unwrap();
     connection
@@ -54,6 +53,7 @@ impl<DB> Queryable<(Integer, Text, Integer, Integer, Integer), DB> for Task
         let deadline = DateTime::from_utc(naive_deadline, UTC);
         let duration = Duration::seconds(row.3 as i64);
         Task {
+            id: Some(row.0 as u32),
             content: row.1,
             deadline: deadline,
             duration: duration,
@@ -95,12 +95,13 @@ mod tests {
     use diesel;
 
     #[test]
-    fn test_insert_and_query() {
+    fn test_insert_query_and_delete_single_task() {
         use self::tasks::dsl::tasks;
 
         let connection = make_connection_with(":memory:");
 
         let new_task = Task {
+            id: None,
             content: "do me".to_string(),
             deadline: UTC::now().with_nanosecond(0).unwrap(),
             duration: Duration::seconds(6),
@@ -114,5 +115,14 @@ mod tests {
 
         let tasks_ = tasks.load::<Task>(&connection).unwrap();
         assert_eq!(tasks_, [new_task]);
+
+        let id = tasks_[0].id.unwrap();
+
+        diesel::delete(tasks.find(id as i32))
+            .execute(&connection)
+            .unwrap();
+
+        let tasks_ = tasks.load::<Task>(&connection).unwrap();
+        assert!(tasks_.is_empty());
     }
 }

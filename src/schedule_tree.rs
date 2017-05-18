@@ -10,6 +10,7 @@ pub struct ScheduleTree<'a, T, D: 'a> {
     scope: Option<Range<T>>,
 }
 
+
 #[derive(Debug, PartialEq)]
 pub enum Node<'a, T, D: 'a> {
     Leaf { start: T, end: T, data: &'a D },
@@ -20,8 +21,9 @@ pub enum Node<'a, T, D: 'a> {
     },
 }
 
+
 impl<'a, T, D> ScheduleTree<'a, T, D>
-    where T: Copy + Clone + Ord + Debug,
+    where T: Copy + Ord + Debug,
           D: Debug
 {
     pub fn new() -> Self {
@@ -85,6 +87,7 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
     }
 }
 
+
 impl<'a, T, D> Node<'a, T, D>
     where T: Copy + Ord + Debug
 {
@@ -120,6 +123,7 @@ impl<'a, T, D> Node<'a, T, D>
     }
 }
 
+
 #[derive(Debug)]
 pub struct Entry<'a, T, D: 'a> {
     pub start: T,
@@ -127,10 +131,12 @@ pub struct Entry<'a, T, D: 'a> {
     pub data: &'a D,
 }
 
+
 #[derive(Debug)]
 pub struct Iter<'b, 'a: 'b, T: 'b, D: 'a> {
     path: Vec<&'b Node<'a, T, D>>,
 }
+
 
 impl<'b, 'a, T, D> Iterator for Iter<'b, 'a, T, D>
     where T: Copy
@@ -163,6 +169,7 @@ impl<'b, 'a, T, D> Iterator for Iter<'b, 'a, T, D>
 }
 
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,7 +178,7 @@ mod tests {
 
     #[test]
     fn test_schedule_exact() {
-        let mut tree: ScheduleTree<i8, i8> = ScheduleTree::new();
+        let mut tree = ScheduleTree::new();
 
         // 5..10
         let scheduled = tree.schedule_exact(5, 5, DATA);

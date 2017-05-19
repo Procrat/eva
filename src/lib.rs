@@ -7,6 +7,7 @@ extern crate chrono;
 extern crate diesel;
 #[macro_use]
 extern crate diesel_codegen;
+extern crate itertools;
 extern crate take_mut;
 
 #[cfg(test)]
@@ -16,8 +17,11 @@ extern crate assert_matches;
 mod db;
 mod schedule_tree;
 
+use std::fmt;
+
 use chrono::{DateTime, Duration, TimeZone, UTC};
 use diesel::prelude::*;
+use itertools::Itertools;
 
 use schedule_tree::ScheduleTree;
 
@@ -63,18 +67,14 @@ pub fn print_schedule() {
     let tasks_ = tasks
         .load::<Task>(&connection)
         .expect("Error retrieving tasks.");
-    for task in tasks_ {
-        let prefix = match task.id {
-            Some(id) => format!("{}.", id),
-            None => "- ".to_string(),
-        };
-        println!("{} {}\n    (deadline: {}, duration: {}, importance: {})",
-                 prefix,
-                 task.content,
-                 task.deadline,
-                 task.duration,
-                 task.importance);
+
+    println!("Tasks:\n");
+    for task in &tasks_ {
+        println!("{}", task);
     }
+
+    let schedule = Schedule::schedule(&tasks_);
+    println!("\n{}", schedule);
 }
 
 
@@ -136,6 +136,36 @@ impl<'a> Schedule<'a> {
         Schedule(importance_schedule)
     }
 }
+
+impl<'a> fmt::Display for Schedule<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        try!(write!(f, "Schedule:\n  "));
+        write!(f, "{}", self.0.iter().join("\n  "))
+    }
+}
+
+impl<'a> fmt::Display for ScheduledTask<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}: {}", self.when, self.task)
+    }
+}
+
+impl fmt::Display for Task {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let prefix = match self.id {
+            Some(id) => format!("{}.", id),
+            None => "- ".to_string(),
+        };
+        write!(f,
+               "{} {}\n    (deadline: {}, duration: {}, importance: {})",
+               prefix,
+               self.content,
+               self.deadline,
+               self.duration,
+               self.importance)
+    }
+}
+
 
 
 #[cfg(test)]

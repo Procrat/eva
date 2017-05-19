@@ -9,6 +9,7 @@ clap = "2.24"
 diesel = {version = "0.12", features = ["sqlite", "chrono"]}
 diesel_codegen = {version = "0.12", features = ["sqlite"]}
 derive-new = "0.4"
+itertools = "0.6"
 take_mut = "0.1"
 
 [dev-dependencies]

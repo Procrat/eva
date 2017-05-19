@@ -68,9 +68,9 @@ pub fn print_schedule() {
         .load::<Task>(&connection)
         .expect("Error retrieving tasks.");
 
-    println!("Tasks:\n");
+    println!("Tasks:");
     for task in &tasks_ {
-        println!("{}", task);
+        println!("  {}", task);
     }
 
     let schedule = Schedule::schedule(&tasks_);
@@ -146,7 +146,9 @@ impl<'a> fmt::Display for Schedule<'a> {
 
 impl<'a> fmt::Display for ScheduledTask<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}: {}", self.when, self.task)
+        write!(f, "{}: {}",
+               format_datetime(self.when),
+               self.task)
     }
 }
 
@@ -156,13 +158,24 @@ impl fmt::Display for Task {
             Some(id) => format!("{}.", id),
             None => "- ".to_string(),
         };
-        write!(f,
-               "{} {}\n    (deadline: {}, duration: {}, importance: {})",
+        write!(f, "{} {}\n    (deadline: {}, duration: {}, importance: {})",
                prefix,
                self.content,
-               self.deadline,
-               self.duration,
+               format_datetime(self.deadline),
+               format_duration(self.duration),
                self.importance)
+    }
+}
+
+fn format_datetime(datetime: DateTime<UTC>) -> String {
+    datetime.format("%a %-d %b %-H:%M").to_string()
+}
+
+fn format_duration(duration: Duration) -> String {
+    if duration.num_minutes() > 0 {
+        format!("{}h{}", duration.num_hours(), duration.num_minutes() % 60)
+    } else {
+        format!("{}h", duration.num_hours())
     }
 }
 

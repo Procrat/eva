@@ -180,37 +180,70 @@ mod tests {
     fn test_schedule_exact() {
         let mut tree = ScheduleTree::new();
 
-        // 5..10
-        let scheduled = tree.schedule_exact(5, 5, DATA);
+        // 5..9
+        let scheduled = tree.schedule_exact(5, 4, DATA);
         assert!(scheduled);
-        assert!(tree.scope == Some(5..10));
-        assert_matches!(tree.root, Some(Node::Leaf { start: 5, end: 10, .. }));
+        assert!(tree.scope == Some(5..9));
+        assert_matches!(tree.root, Some(Node::Leaf { start: 5, end: 9, .. }));
 
-        //   free:10..13
+        //   free:9..13
         //    /        \
-        // 5..10      13..18
+        // 5..9       13..18
         let scheduled = tree.schedule_exact(13, 5, DATA);
         assert!(scheduled);
         assert!(tree.scope == Some(5..18));
         assert_matches!(tree.root, Some(Node::Intermediate {
-            free: Range { start: 10, end: 13 },
+            free: Range { start: 9, end: 13 },
             right: box Node::Leaf { start: 13, end: 18, .. },
         .. }));
 
-        //   free:10..10
+        //   free:9..10
         //    /        \
-        // 5..10     free:12..13
+        // 5..9      free:12..13
         //             /     \
         //          10..12  13..18
         let scheduled = tree.schedule_exact(10, 2, DATA);
         assert!(scheduled);
         assert!(tree.scope == Some(5..18));
         assert_matches!(tree.root, Some(Node::Intermediate {
-            free: Range { start: 10, end: 10 },
+            free: Range { start: 9, end: 10 },
             right: box Node::Intermediate {
                 free: Range { start: 12, end: 13 },
                 left: box Node::Leaf { start: 10, end: 12, .. },
             .. },
         .. }));
+
+        let scheduled = tree.schedule_exact(14, 2, DATA);
+        assert!(!scheduled);
+
+        let scheduled = tree.schedule_exact(12, 0, DATA);
+        assert!(!scheduled);
+
+        let scheduled = tree.schedule_exact(9, 2, DATA);
+        assert!(!scheduled);
+
+        //     free:9..9
+        //    /         \
+        // 5..9      free:10..10
+        //            /       \
+        //         9..10   free:12..13
+        //                   /     \
+        //               10..12   13..18
+        let scheduled = tree.schedule_exact(9, 1, DATA);
+        assert!(scheduled);
+        assert!(tree.scope == Some(5..18));
+        assert_matches!(tree.root, Some(Node::Intermediate {
+            free: Range { start: 9, end: 9 },
+            left: box Node::Leaf { start: 5, end: 9, .. },
+            right: box Node::Intermediate {
+                free: Range { start: 10, end: 10 },
+                left: box Node::Leaf { start: 9, end: 10, .. },
+                right: box Node::Intermediate {
+                    free: Range { start: 12, end: 13 },
+                    left: box Node::Leaf { start: 10, end: 12, .. },
+                    right: box Node::Leaf { start: 13, end: 18, .. },
+                },
+            },
+        }));
     }
 }

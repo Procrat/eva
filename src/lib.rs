@@ -113,6 +113,7 @@ pub struct Schedule<'a>(Vec<ScheduledTask<'a>>);
 
 impl<'a> Schedule<'a> {
     /// Schedules tasks according to their deadlines, importance and duration.
+    ///
     /// First, all tasks --- starting with the most important until the least important --- are
     /// scheduled as close as possible to their deadline.
     /// Next, all tasks --- starting with the most urgent one until the least urgent --- are put as
@@ -125,9 +126,9 @@ impl<'a> Schedule<'a> {
     pub fn schedule<'b: 'a>(tasks: &'b [Task]) -> Schedule<'a> {
         let mut tree = ScheduleTree::new();
         for task in tasks {
-            let start = task.deadline - task.duration;
-            // TODO schedule close before the deadline
-            tree.schedule_exact(start, task.duration, task);
+            if ! tree.schedule_close_before(task.deadline, task.duration, Some(UTC::now()), task) {
+                panic!("Out of time! Not all tasks could be scheduled.")
+            }
         }
         let importance_schedule = tree.iter()
             .map(|entry| ScheduledTask::new(entry.data, entry.start))

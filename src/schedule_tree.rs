@@ -26,6 +26,7 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
     where T: Copy + Ord + Debug,
           D: Debug
 {
+    /// Returns an empty schedule tree.
     pub fn new() -> Self {
         ScheduleTree {
             root: None,
@@ -33,10 +34,14 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
         }
     }
 
+    /// Returns a chronological iterator of the schedule tree.
     pub fn iter<'b>(&'b self) -> Iter<'b, 'a, T, D> {
         Iter { path: self.root.iter().collect() }
     }
 
+    /// Tries to schedule `data` at the exact `start` with the given `duration`.
+    ///
+    /// Returns whether the scheduling succeeded.
     #[allow(dead_code)]
     pub fn schedule_exact<W>(&mut self, start: T, duration: W, data: &'a D) -> bool
         where T: Add<W, Output = T>
@@ -49,6 +54,10 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
         self.root.as_mut().unwrap().insert(start, end, data)
     }
 
+    /// Tries to schedule `data` as close as possible before `end` with the given `duration`. It
+    /// must be scheduled after `min_start` when given.
+    ///
+    /// Returns whether the scheduling succeeded.
     pub fn schedule_close_before<W>(&mut self, end: T, duration: W, min_start: Option<T>, data: &'a D) -> bool
         where T: Add<W, Output = T> + Sub<W, Output = T>,
               W: Copy
@@ -60,7 +69,6 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
             return true
         }
 
-        // let root = ;
         if self.root.as_mut().unwrap().insert_before(end, duration, min_start, data) {
             return true
         }
@@ -86,10 +94,12 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
         false
     }
 
-    /// Common code between all scheduling strategies. It handles the cases where
+    /// Common scheduling cases between all scheduling strategies. It handles the cases where
     /// (a) the schedule tree is empty;
     /// (b) the most optimal start and end fall completely before the left-most child in the tree
     /// (c) the most optimal start and end fall completely after the right-most child in the tree
+    ///
+    /// Returns whether the scheduling succeeded.
     fn try_schedule_trivial_cases(&mut self, start: T, end: T, data: &'a D) -> bool {
         let new_node = Node::Leaf {
             start: start,
@@ -133,6 +143,7 @@ impl<'a, T, D> Node<'a, T, D>
     where T: Copy + Ord + Debug,
           D: Debug
 {
+    /// Tries to insert a node with given `start`, `end` and `data` as a descendant of this node.
     fn insert(&mut self, start: T, end: T, data: &'a D) -> bool {
         match *self {
             Node::Leaf { .. } => false,
@@ -157,6 +168,9 @@ impl<'a, T, D> Node<'a, T, D>
         }
     }
 
+    /// Tries to insert a node with the given `data` and `duration` as a descendant of this node.
+    /// It must be scheduled as close to `end` as possible, but it cannot be scheduled sooner than
+    /// `min_start`, when given.
     fn insert_before<W>(&mut self, end: T, duration: W, min_start: Option<T>, data: &'a D) -> bool
         where T: Sub<W, Output = T>,
               W: Copy
@@ -192,6 +206,10 @@ impl<'a, T, D> Node<'a, T, D>
     }
 }
 
+/// Inserts a leaf node with given start, end and data in place of the right node of some other
+/// node `x`. The original right node of `x` becomes the right node of the right node of `x` and
+/// the new node becomes the left node of the right node of `x`. The free range of `x` is also
+/// passed and updated.
 fn unchecked_insert<'a, T, D>(start: T, end: T, data: &'a D, right: &mut Box<Node<'a, T, D>>, free: &mut Range<T>)
     where T: Ord + Copy
 {

@@ -123,10 +123,13 @@ impl<'a> Schedule<'a> {
     /// Args:
     ///     tasks: ordered list of tasks to schedule, ordered from most important to least
     ///     important.
+    /// Returns an instance of Schedule which contains all tasks, each bound to certain date and
+    /// time.
     pub fn schedule<'b: 'a>(tasks: &'b [Task]) -> Schedule<'a> {
         let mut tree = ScheduleTree::new();
         for task in tasks {
             if ! tree.schedule_close_before(task.deadline, task.duration, Some(UTC::now()), task) {
+                // TODO Figure out what should be done in this case
                 panic!("Out of time! Not all tasks could be scheduled.")
             }
         }

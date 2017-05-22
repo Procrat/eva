@@ -15,9 +15,9 @@ pub struct ScheduleTree<'a, T, D: 'a> {
 pub enum Node<'a, T, D: 'a> {
     Leaf { start: T, end: T, data: &'a D },
     Intermediate {
+        free: Range<T>,
         left: Box<Node<'a, T, D>>,
         right: Box<Node<'a, T, D>>,
-        free: Range<T>,
     },
 }
 
@@ -88,6 +88,46 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
                                  free: scope.start..scope.start,
                              });
             self.scope = Some((scope.start - duration)..scope.end);
+            return true
+        }
+
+        false
+    }
+
+    /// Tries to schedule `data` as close as possible after `start` with the given `duration`. It
+    /// must be scheduled before `max_end` when given.
+    ///
+    /// Returns whether the scheduling succeeded.
+    pub fn schedule_close_after<W>(&mut self, start: T, duration: W, max_end: Option<T>, data: &'a D) -> bool
+        where T: Add<W, Output = T> + Sub<W, Output = T>,
+              W: Copy + Debug
+    {
+        assert!(max_end.map_or(true, |max_end| start + duration <= max_end));
+
+        let optimal_end = start + duration;
+        if self.try_schedule_trivial_cases(start, optimal_end, data) {
+            return true
+        }
+
+        if self.root.as_mut().unwrap().insert_after(start, duration, max_end, data) {
+            return true
+        }
+
+        // As last resort, try to schedule after current scope if max_end allows
+        let scope = self.scope.as_ref().cloned().unwrap();
+        if max_end.map_or(true, |max_end| scope.end + duration <= max_end) {
+            // Schedule on [scope.end, scope.end + duration]
+            let new_node = Node::Leaf {
+                start: scope.end,
+                end: scope.end + duration,
+                data: data,
+            };
+            self.root = Some(Node::Intermediate {
+                                 left: Box::new(self.root.take().unwrap()),
+                                 right: Box::new(new_node),
+                                 free: scope.end..scope.end,
+                             });
+            self.scope = Some(scope.start..(scope.end + duration));
             return true
         }
 
@@ -169,8 +209,8 @@ impl<'a, T, D> Node<'a, T, D>
     }
 
     /// Tries to insert a node with the given `data` and `duration` as a descendant of this node.
-    /// It must be scheduled as close to `end` as possible, but it cannot be scheduled sooner than
-    /// `min_start`, when given.
+    /// It must be scheduled as close before `end` as possible, but it cannot be scheduled sooner
+    /// than `min_start`, when given.
     fn insert_before<W>(&mut self, end: T, duration: W, min_start: Option<T>, data: &'a D) -> bool
         where T: Sub<W, Output = T>,
               W: Copy
@@ -201,6 +241,44 @@ impl<'a, T, D> Node<'a, T, D>
                 }
                 // Last, try to insert it in the left child
                 left.insert_before(end, duration, min_start, data)
+            }
+        }
+    }
+
+    /// Tries to insert a node with the given `data` and `duration` as a descendant of this node.
+    /// It must be scheduled as close after `start` as possible, but it cannot be scheduled later
+    /// than `max_end`, when given.
+    fn insert_after<W>(&mut self, start: T, duration: W, max_end: Option<T>, data: &'a D) -> bool
+        where T: Add<W, Output = T>,
+              W: Copy
+    {
+        match *self {
+            Node::Leaf { .. } => false,
+            Node::Intermediate {
+                ref mut left,
+                ref mut right,
+                ref mut free,
+            } => {
+                // If the start is inside the left child, try that first
+                if start < free.start {
+                    if left.insert_after(start, duration, max_end, data) {
+                        return true
+                    }
+                }
+                // Second, try to insert it in the free range of the current node
+                if free.start + duration <= free.end {
+                    if max_end.map_or(true, |max_end| free.start + duration <= max_end) {
+                        // TODO insert right?
+                        unchecked_insert(free.start, free.start + duration, data, right, free);
+                        return true
+                    }
+                }
+                // If max_end is contained in free, don't bother checking the right child
+                if max_end.map_or(true, |max_end| max_end <= free.end) {
+                    return false
+                }
+                // Last, try to insert it in the right child
+                right.insert_after(start, duration, max_end, data)
             }
         }
     }
@@ -431,6 +509,83 @@ mod tests {
                     right: box Node::Leaf { start: 13, end: 18, .. }
                 },
             },
+        }));
+    }
+
+    #[test]
+    fn test_schedule_close_after() {
+        let mut tree = ScheduleTree::new();
+
+        // 13..18
+        let scheduled = tree.schedule_close_after(13, 5, None, DATA);
+        assert!(scheduled);
+        assert!(tree.scope == Some(13..18));
+        assert_matches!(tree.root, Some(Node::Leaf { start: 13, end: 18, .. }));
+
+        //   free:10..13
+        //    /        \
+        // 5..10      13..18
+        let scheduled = tree.schedule_close_after(5, 5, Some(10), DATA);
+        assert!(scheduled);
+        assert!(tree.scope == Some(5..18));
+        assert_matches!(tree.root, Some(Node::Intermediate {
+            free: Range { start: 10, end: 13 },
+            left: box Node::Leaf { start: 5, end: 10, .. },
+            right: box Node::Leaf { start: 13, end: 18, .. },
+        }));
+
+        let scheduled = tree.schedule_close_after(4, 2, Some(11), DATA);
+        assert!(!scheduled);
+        assert!(tree.scope == Some(5..18));
+        assert_matches!(tree.root, Some(Node::Intermediate {
+            free: Range { start: 10, end: 13 },
+            left: box Node::Leaf { start: 5, end: 10, .. },
+            right: box Node::Leaf { start: 13, end: 18, .. },
+        }));
+
+        //   free:10..10
+        //    /        \
+        // 5..10     free:13..13
+        //             /     \
+        //          10..13  13..18
+        let scheduled = tree.schedule_close_after(4, 3, Some(13), DATA);
+        assert!(scheduled);
+        assert!(tree.scope == Some(5..18));
+        assert_matches!(tree.root, Some(Node::Intermediate {
+            free: Range { start: 10, end: 10 },
+            left: box Node::Leaf { start: 5, end: 10, .. },
+            right: box Node::Intermediate {
+                free: Range { start: 13, end: 13 },
+                left: box Node::Leaf { start: 10, end: 13, .. },
+                right: box Node::Leaf { start: 13, end: 18, .. }
+            },
+        }));
+
+        let scheduled = tree.schedule_close_after(4, 2, Some(19), DATA);
+        assert!(!scheduled);
+
+        //         free:18..18
+        //         /          \
+        //   free:10..10     18..20
+        //    /        \
+        // 5..10     free:13..13
+        //             /     \
+        //          10..13  13..18
+        let scheduled = tree.schedule_close_after(4, 2, Some(20), DATA);
+        assert!(scheduled);
+        assert!(tree.scope == Some(5..20));
+        assert_matches!(tree.root, Some(Node::Intermediate {
+            free: Range { start: 18, end: 18 },
+            left: box Node::Intermediate {
+                free: Range { start: 10, end: 10 },
+                left: box Node::Leaf { start: 5, end: 10, .. },
+                right: box Node::Intermediate {
+                    free: Range { start: 13, end: 13 },
+                    left: box Node::Leaf { start: 10, end: 13, .. },
+                    right: box Node::Leaf { start: 13, end: 18, .. }
+                },
+            },
+            right: box Node::Leaf { start: 18, end: 20, .. },
         }));
     }
 }

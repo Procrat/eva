@@ -84,11 +84,16 @@ pub fn set(field_name: &str, id: u32, value: &str) {
         _ => unreachable!(),
     }
 
-    diesel::update(&task)
+    let amount_updated = diesel::update(&task)
         .set(task)
         .execute(&connection)
         .expect("Error updating task.");
 
+    if amount_updated == 0 {
+        panic!("Could not update task.")
+    } else if amount_updated > 1 {
+        panic!("Internal error (this should not happen): multiple tasks got deleted.")
+    }
 }
 
 pub fn print_schedule() {

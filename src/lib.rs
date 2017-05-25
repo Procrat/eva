@@ -26,15 +26,13 @@ use itertools::Itertools;
 use schedule_tree::ScheduleTree;
 
 
-pub fn add(content: &str, deadline: &str, duration_hours: f64, importance: u32) {
+pub fn add(content: &str, deadline: &str, duration: &str, importance: u32) {
     use db::tasks::dsl::tasks;
 
     let connection = db::make_connection();
 
-    let deadline =
-        UTC.datetime_from_str(deadline, "%-d %b %Y %-H:%M")
-            .expect("Could not parse deadline. Please provide something like 4 Jul 6:05.");
-    let duration = Duration::minutes((60.0 * duration_hours) as i64);
+    let deadline = parse_datetime(deadline);
+    let duration = parse_duration(duration);
     let new_task = Task {
         id: None,
         content: content.to_string(),
@@ -54,9 +52,43 @@ pub fn remove(id: u32) {
 
     let connection = db::make_connection();
 
-    diesel::delete(tasks.find(id as i32))
+    let amount_deleted =
+        diesel::delete(tasks.find(id as i32))
         .execute(&connection)
         .expect("Error removing task.");
+
+    if amount_deleted == 0 {
+        panic!("Could not find task with id {}", id)
+    } else if amount_deleted > 1 {
+        panic!("Internal error (this should not happen): multiple tasks got deleted.")
+    }
+}
+
+pub fn set(field_name: &str, id: u32, value: &str) {
+    assert!(["content", "deadline", "duration", "importance"].contains(&field_name));
+
+    use db::tasks::dsl::tasks;
+
+    let connection = db::make_connection();
+
+    let mut task: Task = tasks.find(id as i32)
+        .first(&connection)
+        .expect("Error retrieving task");
+
+    match field_name {
+        "content" => task.content = value.to_string(),
+        "deadline" => task.deadline = parse_datetime(value),
+        "duration" => task.duration = parse_duration(value),
+        "importance" => task.importance = value.parse()
+            .expect("Please supply a valid integer"),
+        _ => unreachable!(),
+    }
+
+    diesel::update(&task)
+        .set(task)
+        .execute(&connection)
+        .expect("Error updating task.");
+
 }
 
 pub fn print_schedule() {
@@ -181,6 +213,17 @@ fn format_duration(duration: Duration) -> String {
     } else {
         format!("{}h", duration.num_hours())
     }
+}
+
+fn parse_datetime(datetime: &str) -> DateTime<UTC> {
+    UTC.datetime_from_str(datetime, "%-d %b %Y %-H:%M")
+        .expect("Could not parse deadline. Please provide something like '4 Jul 2017 6:05'.")
+}
+
+fn parse_duration(duration_hours: &str) -> Duration {
+    let hours: f64 = duration_hours.parse()
+        .expect("Please supply a valid real number as duration.");
+    Duration::minutes((60.0 * hours) as i64)
 }
 
 

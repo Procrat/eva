@@ -13,6 +13,10 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         .arg(Arg::with_name("importance").required(true));
     let rm = SubCommand::with_name("rm")
         .arg(Arg::with_name("id").required(true));
+    let set = SubCommand::with_name("set")
+        .arg(Arg::with_name("field").required(true))
+        .arg(Arg::with_name("id").required(true))
+        .arg(Arg::with_name("value").required(true));
     let schedule = SubCommand::with_name("schedule");
 
     return App::new("eva")
@@ -20,6 +24,7 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         .setting(AppSettings::SubcommandRequiredElseHelp)
         .subcommand(add)
         .subcommand(rm)
+        .subcommand(set)
         .subcommand(schedule)
 }
 
@@ -32,8 +37,6 @@ fn main() {
             let deadline = submatches.value_of("deadline").unwrap();
             let duration = submatches.value_of("duration").unwrap();
             let importance = submatches.value_of("importance").unwrap();
-            let duration: f64 = duration.parse()
-                .expect("Please supply a valid (real) number as duration.");
             let importance: u32 = importance.parse()
                 .expect("Please supply a valid integer as importance factor.");
             eva::add(content, deadline, duration, importance)
@@ -44,6 +47,17 @@ fn main() {
                 .expect("Please supply a valid integer as id.");
             eva::remove(id)
         },
+        ("set", Some(submatches)) => {
+            let field = submatches.value_of("field").unwrap();
+            let id = submatches.value_of("id").unwrap();
+            let value = submatches.value_of("value").unwrap();
+            if !["content", "deadline", "duration", "importance"].contains(&field) {
+                panic!("<field> should be one of: content, deadline, duration, importance")
+            }
+            let id: u32 = id.parse()
+                .expect("Please supply a valid integer as id.");
+            eva::set(field, id, value);
+        }
         ("schedule", Some(_submatches)) => {
             eva::print_schedule()
         },

@@ -3,11 +3,13 @@
 use std::io;
 
 use chrono::{DateTime, Duration, NaiveDateTime, UTC};
+use diesel::associations::HasTable;
 use diesel::backend::Backend;
 use diesel::expression::AsExpression;
-use diesel::expression::helper_types::AsNullableExpr;
+use diesel::expression::helper_types::{AsNullableExpr, Eq};
 use diesel::insertable::ColumnInsertValue;
 use diesel::prelude::*;
+use diesel::query_builder::AsChangeset;
 use diesel::query_builder::insert_statement::{InsertStatement, IntoInsertStatement};
 use diesel::sqlite::{Sqlite, SqliteConnection};
 use diesel::types::{FromSql, HasSqlType, Integer, Text};
@@ -90,6 +92,42 @@ impl<'a, Op> IntoInsertStatement<tasks::table, Op> for &'a Task {
 }
 
 
+impl<'a> Identifiable for &'a Task {
+    type Id = i32;
+
+    fn id(self) -> Self::Id {
+        self.id.expect("internal error: id must not be None.") as i32
+    }
+}
+
+impl HasTable for Task {
+    type Table = tasks::dsl::tasks;
+
+    fn table() -> Self::Table {
+        tasks::dsl::tasks
+    }
+}
+
+
+impl AsChangeset for Task {
+    type Target = tasks::dsl::tasks;
+    type Changeset = (Eq<tasks::dsl::content, String>,
+                      Eq<tasks::dsl::deadline, i32>,
+                      Eq<tasks::dsl::duration, i32>,
+                      Eq<tasks::dsl::importance, i32>,
+                      );
+
+    fn as_changeset(self) -> Self::Changeset {
+        (tasks::dsl::content.eq(self.content),
+         tasks::dsl::deadline.eq(self.deadline.timestamp() as i32),
+         tasks::dsl::duration.eq(self.duration.num_seconds() as i32),
+         tasks::dsl::importance.eq(self.importance as i32),
+         )
+    }
+}
+
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,14 +139,7 @@ mod tests {
         use self::tasks::dsl::tasks;
 
         let connection = make_connection_with(":memory:");
-
-        let new_task = Task {
-            id: None,
-            content: "do me".to_string(),
-            deadline: UTC::now().with_nanosecond(0).unwrap(),
-            duration: Duration::seconds(6),
-            importance: 42,
-        };
+        let new_task = test_task();
 
         diesel::insert(&new_task)
             .into(tasks)
@@ -126,5 +157,50 @@ mod tests {
 
         let tasks_ = tasks.load::<Task>(&connection).unwrap();
         assert!(tasks_.is_empty());
+    }
+
+    #[test]
+    fn test_insert_update_query_single_task() {
+        use self::tasks::dsl::tasks;
+
+        let connection = make_connection_with(":memory:");
+        let new_task = test_task();
+        diesel::insert(&new_task)
+            .into(tasks)
+            .execute(&connection)
+            .unwrap();
+
+        let mut tasks_ = tasks.load::<Task>(&connection).unwrap();
+        let mut task = tasks_.pop().unwrap();
+        let deadline = DateTime::<UTC>::from_utc(
+            NaiveDateTime::parse_from_str("2015-09-05 23:56:04", "%Y-%m-%d %H:%M:%S").unwrap(),
+            UTC);
+        task.content = "stuff".to_string();
+        task.deadline = deadline;
+        task.duration = Duration::minutes(7);
+        task.importance = 100;
+        let task2 = task.clone();
+
+        diesel::update(&task)
+            .set(task)
+            .execute(&connection)
+            .unwrap();
+
+        let task_from_db = tasks.find(task2.id.unwrap() as i32).first(&connection).unwrap();
+        assert_eq!(task2, task_from_db);
+        assert_eq!(task2.content, "stuff");
+        assert_eq!(task2.deadline, deadline);
+        assert_eq!(task2.duration, Duration::minutes(7));
+        assert_eq!(task2.importance, 100);
+    }
+
+    fn test_task() -> Task {
+        Task {
+            id: None,
+            content: "do me".to_string(),
+            deadline: UTC::now().with_nanosecond(0).unwrap(),
+            duration: Duration::seconds(6),
+            importance: 42,
+        }
     }
 }

@@ -6,6 +6,8 @@ use std::ops::{Add, Range, Sub};
 
 use take_mut;
 
+use util::WithSideEffects;
+
 
 #[derive(Debug)]
 pub struct ScheduleTree<'a, T, D: 'a + Eq + Hash> {
@@ -51,13 +53,9 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
     pub fn schedule_exact<W>(&mut self, start: T, duration: W, data: &'a D) -> bool
         where T: Add<W, Output = T>
     {
-        match self.schedule_exact_(start, duration, data) {
-            Some(start) => {
-                self.update_map(start, data);
-                true
-            },
-            None => false,
-        }
+        self.schedule_exact_(start, duration, data)
+            .with_side_effects(|start| self.update_map(start, data))
+            .is_some()
     }
 
     /// See `schedule_exact` for details.
@@ -67,10 +65,7 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
         where T: Add<W, Output = T>
     {
         let end = start + duration;
-        match self.try_schedule_trivial_cases(start, end, data) {
-            Some(start) => return Some(start),
-            None => (),
-        }
+        return_on_some!(self.try_schedule_trivial_cases(start, end, data));
 
         self.root.as_mut().unwrap().insert(start, end, data)
     }
@@ -83,13 +78,9 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
         where T: Add<W, Output = T> + Sub<W, Output = T>,
               W: Copy + Debug
     {
-        match self.schedule_close_before_(end, duration, min_start, data) {
-            Some(start) => {
-                self.update_map(start, data);
-                true
-            },
-            None => false
-        }
+        self.schedule_close_before_(end, duration, min_start, data)
+            .with_side_effects(|start| self.update_map(start, data))
+            .is_some()
     }
 
     /// See `schedule_close_before` for details.
@@ -102,15 +93,10 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
         assert!(min_start.map_or(true, |min_start| min_start + duration <= end));
 
         let optimal_start = end - duration;
-        match self.try_schedule_trivial_cases(optimal_start, end, data) {
-            Some(start) => return Some(start),
-            None => ()
-        }
+        return_on_some!(self.try_schedule_trivial_cases(optimal_start, end, data));
 
-        match self.root.as_mut().unwrap().insert_before(end, duration, min_start, data) {
-            Some(start) => return Some(start),
-            None => ()
-        }
+        return_on_some!(self.root.as_mut().unwrap()
+                        .insert_before(end, duration, min_start, data));
 
         // As last resort, try to schedule before current scope if min_start allows
         let scope = self.scope.as_ref().cloned().unwrap();
@@ -143,13 +129,9 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
         where T: Add<W, Output = T> + Sub<W, Output = T>,
               W: Copy + Debug
     {
-        match self.schedule_close_after_(start, duration, max_end, data) {
-            Some(start) => {
-                self.update_map(start, data);
-                true
-            }
-            None => false
-        }
+        self.schedule_close_after_(start, duration, max_end, data)
+            .with_side_effects(|start| self.update_map(start, data))
+            .is_some()
     }
 
     /// See `schedule_close_after` for details.
@@ -162,15 +144,10 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
         assert!(max_end.map_or(true, |max_end| start + duration <= max_end));
 
         let optimal_end = start + duration;
-        match self.try_schedule_trivial_cases(start, optimal_end, data) {
-            Some(start) => return Some(start),
-            None => ()
-        }
+        return_on_some!(self.try_schedule_trivial_cases(start, optimal_end, data));
 
-        match self.root.as_mut().unwrap().insert_after(start, duration, max_end, data) {
-            Some(start) => return Some(start),
-            None => ()
-        }
+        return_on_some!(self.root.as_mut().unwrap()
+                        .insert_after(start, duration, max_end, data));
 
         // As last resort, try to schedule after current scope if max_end allows
         let scope = self.scope.as_ref().cloned().unwrap();

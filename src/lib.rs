@@ -14,8 +14,6 @@ extern crate take_mut;
 #[macro_use]
 extern crate assert_matches;
 
-mod db;
-mod schedule_tree;
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -26,6 +24,12 @@ use diesel::prelude::*;
 use itertools::Itertools;
 
 use schedule_tree::ScheduleTree;
+
+#[macro_use]
+mod util;
+
+mod db;
+mod schedule_tree;
 
 
 pub fn add(content: &str, deadline: &str, duration: &str, importance: u32) {

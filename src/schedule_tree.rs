@@ -1,3 +1,4 @@
+use std::cmp::{max, min};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -80,7 +81,7 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
     /// Returns whether the scheduling succeeded.
     pub fn schedule_close_before<W>(&mut self, end: T, duration: W, min_start: Option<T>, data: &'a D) -> bool
         where T: Add<W, Output = T> + Sub<W, Output = T>,
-              W: Copy
+              W: Copy + Debug
     {
         match self.schedule_close_before_(end, duration, min_start, data) {
             Some(start) => {
@@ -96,7 +97,7 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
     /// Returns the start of the scheduling if it succeeded, otherwise None
     fn schedule_close_before_<W>(&mut self, end: T, duration: W, min_start: Option<T>, data: &'a D) -> Option<T>
         where T: Add<W, Output = T> + Sub<W, Output = T>,
-              W: Copy
+              W: Copy + Debug
     {
         assert!(min_start.map_or(true, |min_start| min_start + duration <= end));
 
@@ -316,7 +317,7 @@ impl<'a, T, D> Node<'a, T, D>
     /// Returns the start of the scheduling if it succeeded, otherwise None
     fn insert_before<W>(&mut self, end: T, duration: W, min_start: Option<T>, data: &'a D) -> Option<T>
         where T: Sub<W, Output = T>,
-              W: Copy
+              W: Copy + Debug
     {
         match *self {
             Node::Leaf { .. } => None,
@@ -333,12 +334,14 @@ impl<'a, T, D> Node<'a, T, D>
                     }
                 }
                 // Second, try to insert it in the free range of the current node
-                if free.start <= free.end - duration {
-                    if min_start.map_or(true, |min_start| min_start <= free.end - duration) {
-                        unchecked_insert(free.end - duration, free.end, data, right, free);
-                        return Some(free.end - duration)
+                let end = min(end, free.end);
+                if free.start <= end - duration {
+                    if min_start.map_or(true, |min_start| min_start <= end - duration) {
+                        unchecked_insert(end - duration, end, data, right, free);
+                        return Some(end - duration)
                     }
                 }
+
                 // If min_start is contained in free, don't bother checking the left child
                 if min_start.map_or(true, |min_start| free.start <= min_start) {
                     return None
@@ -355,8 +358,8 @@ impl<'a, T, D> Node<'a, T, D>
     ///
     /// Returns the start of the scheduling if it succeeded, otherwise None
     fn insert_after<W>(&mut self, start: T, duration: W, max_end: Option<T>, data: &'a D) -> Option<T>
-        where T: Add<W, Output = T>,
-              W: Copy
+        where T: Ord + Add<W, Output = T>,
+              W: Copy + Debug
     {
         match *self {
             Node::Leaf { .. } => None,
@@ -373,11 +376,11 @@ impl<'a, T, D> Node<'a, T, D>
                     }
                 }
                 // Second, try to insert it in the free range of the current node
-                if free.start + duration <= free.end {
-                    if max_end.map_or(true, |max_end| free.start + duration <= max_end) {
-                        // TODO insert right?
-                        unchecked_insert(free.start, free.start + duration, data, right, free);
-                        return Some(free.start)
+                let start = max(start, free.start);
+                if start + duration <= free.end {
+                    if max_end.map_or(true, |max_end| start + duration <= max_end) {
+                        unchecked_insert(start, start + duration, data, right, free);
+                        return Some(start)
                     }
                 }
                 // If max_end is contained in free, don't bother checking the right child
@@ -518,7 +521,8 @@ impl<'a, T, D> Node<'a, T, D>
 /// the new node becomes the left node of the right node of `x`. The free range of `x` is also
 /// passed and updated.
 fn unchecked_insert<'a, T, D>(start: T, end: T, data: &'a D, right: &mut Box<Node<'a, T, D>>, free: &mut Range<T>)
-    where T: Ord + Copy
+    where T: Ord + Copy + Debug,
+          D: Debug
 {
     assert!(free.start <= start);
     assert!(end <= free.end);
@@ -742,6 +746,54 @@ mod tests {
                 },
             },
         }));
+
+        //           free:18..30
+        //          /           \
+        //     free:5..5       25..30
+        //     /       \
+        //  3..5    free:10..11
+        //           /        \
+        //        5..10     free:13..13
+        //                    /     \
+        //                 11..13  13..18
+        let scheduled = tree.schedule_close_before(30, 5, Some(19), &data[6]);
+        assert!(scheduled);
+        assert!(tree.scope == Some(3..30));
+
+        //                free:18..21
+        //              /             \
+        //     free:5..5               free:24..25
+        //     /       \                /        \
+        //  3..5    free:10..11      21..24     25..30
+        //           /        \
+        //        5..10     free:13..13
+        //                    /     \
+        //                 11..13  13..18
+        let scheduled = tree.schedule_close_before(24, 3, None, &data[7]);
+        assert!(scheduled);
+        assert!(tree.scope == Some(3..30));
+
+        assert_matches!(tree.root, Some(Node::Intermediate {
+            free: Range { start: 18, end: 21 },
+            left: box Node::Intermediate {
+                free: Range { start: 5, end: 5 },
+                left: box Node::Leaf { start: 3, end: 5, .. },
+                right: box Node::Intermediate {
+                    free: Range { start: 10, end: 11 },
+                    left: box Node::Leaf { start: 5, end: 10, .. },
+                    right: box Node::Intermediate {
+                        free: Range { start: 13, end: 13 },
+                        left: box Node::Leaf { start: 11, end: 13, .. },
+                        right: box Node::Leaf { start: 13, end: 18, .. }
+                    },
+                },
+            },
+            right: box Node::Intermediate {
+                free: Range { start: 24, end: 25 },
+                left: box Node::Leaf { start: 21, end: 24, .. },
+                right: box Node::Leaf { start: 25, end: 30, .. },
+            },
+        }));
     }
 
     #[test]
@@ -820,6 +872,53 @@ mod tests {
                 },
             },
             right: box Node::Leaf { start: 18, end: 20, .. },
+        }));
+
+        //                free:20..25
+        //              /             \
+        //         free:18..18       25..30
+        //         /          \
+        //   free:10..10     18..20
+        //    /        \
+        // 5..10     free:13..13
+        //             /     \
+        //          10..13  13..18
+        let scheduled = tree.schedule_close_after(25, 5, None, &data[6]);
+        assert!(scheduled);
+        assert!(tree.scope == Some(5..30));
+
+        //                      free:20..21
+        //                    /             \
+        //         free:18..18               free:23..25
+        //         /          \              /         \
+        //   free:10..10     18..20      21..23       25..30
+        //    /        \
+        // 5..10     free:13..13
+        //             /     \
+        //          10..13  13..18
+        let scheduled = tree.schedule_close_after(21, 2, None, &data[7]);
+        assert!(scheduled);
+        assert!(tree.scope == Some(5..30));
+        assert_matches!(tree.root, Some(Node::Intermediate {
+            free: Range { start: 20, end: 21 },
+            left: box Node::Intermediate {
+                free: Range { start: 18, end: 18 },
+                left: box Node::Intermediate {
+                    free: Range { start: 10, end: 10 },
+                    left: box Node::Leaf { start: 5, end: 10, .. },
+                    right: box Node::Intermediate {
+                        free: Range { start: 13, end: 13 },
+                        left: box Node::Leaf { start: 10, end: 13, .. },
+                        right: box Node::Leaf { start: 13, end: 18, .. }
+                    },
+                },
+                right: box Node::Leaf { start: 18, end: 20, .. },
+            },
+            right: box Node::Intermediate {
+                free: Range { start: 23, end: 25 },
+                left: box Node::Leaf { start: 21, end: 23, .. },
+                right: box Node::Leaf { start: 25, end: 30, .. },
+            },
         }));
     }
 

@@ -18,8 +18,10 @@ mod db;
 mod schedule_tree;
 
 use std::fmt;
+use std::hash::{Hash, Hasher};
 
-use chrono::{DateTime, Duration, TimeZone, UTC};
+use chrono::prelude::*;
+use chrono::Duration;
 use diesel::prelude::*;
 use itertools::Itertools;
 
@@ -135,6 +137,18 @@ impl PartialEq for Task {
             self.deadline == other.deadline &&
             self.duration == other.duration &&
             self.importance == other.importance
+    }
+}
+
+// Hack because chrono::Duration, which is a re-export of std::time::Duration, does not re-export
+// implementation of Hash trait.
+impl Hash for Task {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.content.hash(state);
+        self.deadline.hash(state);
+        self.duration.to_std().unwrap().hash(state);
+        self.importance.hash(state);
     }
 }
 

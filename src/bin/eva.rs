@@ -17,7 +17,12 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         .arg(Arg::with_name("field").required(true))
         .arg(Arg::with_name("id").required(true))
         .arg(Arg::with_name("value").required(true));
-    let schedule = SubCommand::with_name("schedule");
+    let schedule = SubCommand::with_name("schedule")
+        .arg(Arg::with_name("algorithm")
+             .long("algorithm")
+             .takes_value(true)
+             .possible_values(&["importance", "urgency"])
+             .default_value("importance"));
 
     return App::new("eva")
         .version(env!("CARGO_PKG_VERSION"))
@@ -58,8 +63,9 @@ fn main() {
                 .expect("Please supply a valid integer as id.");
             eva::set(field, id, value);
         }
-        ("schedule", Some(_submatches)) => {
-            eva::print_schedule()
+        ("schedule", Some(submatches)) => {
+            let algorithm = submatches.value_of("algorithm").unwrap();
+            eva::print_schedule(algorithm)
         },
         _ => unreachable!(),
     };

@@ -46,6 +46,10 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
         Iter { path: self.root.iter().collect() }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.root.is_none()
+    }
+
     /// Tries to schedule `data` at the exact `start` with the given `duration`.
     ///
     /// Returns whether the scheduling succeeded.
@@ -241,6 +245,10 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
             },
             _ => None,
         }
+    }
+
+    pub fn when_scheduled(&self, data: &'a D) -> Option<&T> {
+        self.data_map.get(data)
     }
 
     fn remove_from_map(&mut self, data: &'a D) -> Option<T> {

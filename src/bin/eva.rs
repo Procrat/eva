@@ -7,17 +7,28 @@ use clap::{App, AppSettings, Arg, SubCommand};
 
 fn cli<'a, 'b>() -> App<'a, 'b> {
     let add = SubCommand::with_name("add")
-        .arg(Arg::with_name("content").required(true))
-        .arg(Arg::with_name("deadline").required(true))
-        .arg(Arg::with_name("duration").required(true))
-        .arg(Arg::with_name("importance").required(true));
+        .about("Adds a task")
+        .arg(Arg::with_name("content").required(true)
+             .help("What is it that you want to do?"))
+        .arg(Arg::with_name("deadline").required(true)
+             .help("When should it be finished? \
+                   Give it in the format of '2 Aug 2017 14:03'."))
+        .arg(Arg::with_name("duration").required(true)
+             .help("How long do you estimate it will take? \
+                   Give it in a (whole or decimal) number of hours."))
+        .arg(Arg::with_name("importance").required(true)
+             .help("How important is this task to you on a scale from 1 to 10?"));
     let rm = SubCommand::with_name("rm")
-        .arg(Arg::with_name("id").required(true));
+        .about("Removes a task")
+        .arg(Arg::with_name("task-id").required(true));
     let set = SubCommand::with_name("set")
-        .arg(Arg::with_name("field").required(true))
-        .arg(Arg::with_name("id").required(true))
+        .about("Changes the deadline, duration, importance or content of an existing task")
+        .arg(Arg::with_name("property").required(true)
+             .possible_values(&["content", "deadline", "duration", "importance"]))
+        .arg(Arg::with_name("task-id").required(true))
         .arg(Arg::with_name("value").required(true));
     let schedule = SubCommand::with_name("schedule")
+        .about("Lets Eva suggest a schedule for your tasks")
         .arg(Arg::with_name("algorithm")
              .long("algorithm")
              .takes_value(true)
@@ -26,6 +37,7 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
 
     return App::new("eva")
         .version(env!("CARGO_PKG_VERSION"))
+        .setting(AppSettings::ColoredHelp)
         .setting(AppSettings::SubcommandRequiredElseHelp)
         .subcommand(add)
         .subcommand(rm)
@@ -47,18 +59,15 @@ fn main() {
             eva::add(content, deadline, duration, importance)
         },
         ("rm", Some(submatches)) => {
-            let id = submatches.value_of("id").unwrap();
+            let id = submatches.value_of("task-id").unwrap();
             let id: u32 = id.parse()
                 .expect("Please supply a valid integer as id.");
             eva::remove(id)
         },
         ("set", Some(submatches)) => {
-            let field = submatches.value_of("field").unwrap();
-            let id = submatches.value_of("id").unwrap();
+            let field = submatches.value_of("property").unwrap();
+            let id = submatches.value_of("task-id").unwrap();
             let value = submatches.value_of("value").unwrap();
-            if !["content", "deadline", "duration", "importance"].contains(&field) {
-                panic!("<field> should be one of: content, deadline, duration, importance")
-            }
             let id: u32 = id.parse()
                 .expect("Please supply a valid integer as id.");
             eva::set(field, id, value);

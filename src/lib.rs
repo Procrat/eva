@@ -306,11 +306,8 @@ impl<'a> fmt::Display for ScheduledTask<'a> {
 
 impl fmt::Display for Task {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let prefix = match self.id {
-            Some(id) => format!("{}.", id),
-            None => "- ".to_string(),
-        };
-        write!(f, "{} {}\n    (deadline: {}, duration: {}, importance: {})",
+        let prefix = self.id.map_or("".to_string(), |id| format!("{}. ", id));
+        write!(f, "{}{}\n    (deadline: {}, duration: {}, importance: {})",
                prefix,
                self.content,
                format_datetime(self.deadline),
@@ -320,7 +317,12 @@ impl fmt::Display for Task {
 }
 
 fn format_datetime(datetime: DateTime<UTC>) -> String {
-    datetime.format("%a %-d %b %-H:%M").to_string()
+    let format = if datetime.year() == UTC::now().year() {
+        "%a %-d %b %-H:%M"
+    } else {
+        "%a %-d %b %Y %-H:%M"
+    };
+    datetime.format(format).to_string()
 }
 
 fn format_duration(duration: Duration) -> String {

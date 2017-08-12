@@ -37,7 +37,7 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
 
     return App::new("eva")
         .version(env!("CARGO_PKG_VERSION"))
-        .setting(AppSettings::ColoredHelp)
+        .global_setting(AppSettings::ColoredHelp)
         .setting(AppSettings::SubcommandRequiredElseHelp)
         .subcommand(add)
         .subcommand(rm)

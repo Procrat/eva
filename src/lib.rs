@@ -201,6 +201,9 @@ impl<'a> Schedule<'a> {
     /// most important until the least important --- are put as close to the present as possible.
     /// For ties on importance, more urgent tasks are scheduled later in the first phase and sooner
     /// in the second phase.
+    ///
+    /// This algorithm has a terrible performance at the moment and it doesn't work right when the
+    /// lengths of the tasks aren't about the same, but it will do for now.
     fn schedule_according_to_importance<'b: 'a, I>(tasks: I) -> Schedule<'a>
         where I: IntoIterator<Item=&'b Task>
     {
@@ -235,13 +238,11 @@ impl<'a> Schedule<'a> {
                     .expect("Internal error: this shouldn't happen");
                 if scheduled_entry.start != *new_start {
                     changed = true;
+                    break;
                 }
             }
         }
-        let scheduled_tasks = tree.iter()
-            .map(|entry| ScheduledTask::new(entry.data, entry.start))
-            .collect();
-        Schedule(scheduled_tasks)
+        Schedule::tree_to_schedule(&tree)
     }
 
     /// Schedules `tasks` according to deadline first and then according to importance.
@@ -282,6 +283,10 @@ impl<'a> Schedule<'a> {
                 panic!("Internal error: this shouldn't happen.")
             }
         }
+        Schedule::tree_to_schedule(&tree)
+    }
+
+    fn tree_to_schedule(tree: &ScheduleTree<'a, DateTime<UTC>, Task>) -> Schedule<'a> {
         let scheduled_tasks = tree.iter()
             .map(|entry| ScheduledTask::new(entry.data, entry.start))
             .collect();
@@ -388,8 +393,6 @@ mod tests {
                         assert_eq!(*schedule.0[1].task, tasks[1]);
                         assert!(are_approx_equal(schedule.0[0].when,
                                                  UTC::now() + *SCHEDULE_DELAY));
-                        eprintln!("{:?}", schedule.0[1].when);
-                        eprintln!("{:?}", UTC::now() + Duration::days(23 * 365));
                         assert!(are_approx_equal(schedule.0[1].when,
                                                  UTC::now() - *SCHEDULE_DELAY
                                                  + Duration::days(23 * 365)));
@@ -568,7 +571,6 @@ mod tests {
     fn schedule_myrjams_schedule_by_importance() {
         let tasks = taskset_of_myrjam();
         let schedule = Schedule::schedule_according_to_importance(&tasks);
-        eprintln!("{}", schedule);
         let mut expected_when = UTC::now() + *SCHEDULE_DELAY;
         // 5. Make dentist appointment, 10m, 5, in 7 days
         assert_eq!(*schedule.0[0].task, tasks[5]);
@@ -593,6 +595,116 @@ mod tests {
         // 0. Take over world, 1000h, 10, in 10 years
         assert_eq!(*schedule.0[5].task, tasks[0]);
         assert!(are_approx_equal(schedule.0[5].when, expected_when));
+    }
+
+    fn taskset_of_gandalf() -> Vec<Task> {
+        vec![
+            Task {
+                id: None,
+                content: "Think of plan to get rid of The Ring".to_string(),
+                deadline: UTC::now() + Duration::days(12) + Duration::hours(15),
+                duration: Duration::days(2),
+                importance: 9
+            },
+            Task {
+                id: None,
+                content: "Ask advice from Saruman".to_string(),
+                deadline: UTC::now() + Duration::days(8) + Duration::hours(15),
+                duration: Duration::days(3),
+                importance: 4
+            },
+            Task {
+                id: None,
+                content: "Visit Bilbo in Rivendel".to_string(),
+                deadline: UTC::now() + Duration::days(13) + Duration::hours(15),
+                duration: Duration::days(2),
+                importance: 2
+            },
+            Task {
+                id: None,
+                content: "Make some firework for the hobbits".to_string(),
+                deadline: UTC::now() + Duration::hours(33),
+                duration: Duration::hours(3),
+                importance: 3
+            },
+            Task {
+                id: None,
+                content: "Get riders of Rohan to help Gondor".to_string(),
+                deadline: UTC::now() + Duration::days(21) + Duration::hours(15),
+                duration: Duration::days(7),
+                importance: 7,
+            },
+            Task {
+                id: None,
+                content: "Find some good pipe-weed".to_string(),
+                deadline: UTC::now() + Duration::days(2) + Duration::hours(15),
+                duration: Duration::hours(1),
+                importance: 8
+            },
+            Task {
+                id: None,
+                content: "Go shop for white clothing".to_string(),
+                deadline: UTC::now() + Duration::days(33) + Duration::hours(15),
+                duration: Duration::hours(2),
+                importance: 3
+            },
+            Task {
+                id: None,
+                content: "Prepare epic-sounding one-liners".to_string(),
+                deadline: UTC::now() + Duration::hours(34),
+                duration: Duration::hours(2),
+                importance: 10
+            },
+            Task {
+                id: None,
+                content: "Recharge staff batteries".to_string(),
+                deadline: UTC::now() + Duration::days(1) + Duration::hours(15),
+                duration: Duration::minutes(30),
+                importance: 5
+            },
+        ]
+    }
+
+    #[test]
+    fn schedule_gandalfs_schedule_by_importance() {
+        let tasks = taskset_of_gandalf();
+        let schedule = Schedule::schedule_according_to_importance(&tasks);
+        let mut expected_when = UTC::now() + *SCHEDULE_DELAY;
+        // 7. Prepare epic-sounding one-liners
+        assert_eq!(*schedule.0[0].task, tasks[7]);
+        assert!(are_approx_equal(schedule.0[0].when, expected_when));
+        expected_when = expected_when + Duration::hours(2);
+        // 5. Find some good pipe-weed
+        assert_eq!(*schedule.0[1].task, tasks[5]);
+        assert!(are_approx_equal(schedule.0[1].when, expected_when));
+        expected_when = expected_when + Duration::hours(1);
+        // 8. Recharge staff batteries
+        assert_eq!(*schedule.0[2].task, tasks[8]);
+        assert!(are_approx_equal(schedule.0[2].when, expected_when));
+        expected_when = expected_when + Duration::minutes(30);
+        // 3. Make some firework for the hobbits
+        assert_eq!(*schedule.0[3].task, tasks[3]);
+        assert!(are_approx_equal(schedule.0[3].when, expected_when));
+        expected_when = expected_when + Duration::hours(3);
+        // 0. Think of plan to get rid of The Ring
+        assert_eq!(*schedule.0[4].task, tasks[0]);
+        assert!(are_approx_equal(schedule.0[4].when, expected_when));
+        expected_when = expected_when + Duration::days(2);
+        // 1. Ask advice from Saruman
+        assert_eq!(*schedule.0[5].task, tasks[1]);
+        assert!(are_approx_equal(schedule.0[5].when, expected_when));
+        expected_when = expected_when + Duration::days(3);
+        // 6. Go shop for white clothing
+        assert_eq!(*schedule.0[6].task, tasks[6]);
+        assert!(are_approx_equal(schedule.0[6].when, expected_when));
+        expected_when = expected_when + Duration::hours(2);
+        // 2. Visit Bilbo in Rivendel
+        assert_eq!(*schedule.0[7].task, tasks[2]);
+        assert!(are_approx_equal(schedule.0[7].when, expected_when));
+        expected_when = expected_when + Duration::days(2);
+        // 4. Get riders of Rohan to help Gondor
+        assert_eq!(*schedule.0[8].task, tasks[4]);
+        assert!(are_approx_equal(schedule.0[8].when, expected_when));
     }
 
     #[test]

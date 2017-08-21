@@ -141,6 +141,48 @@ Schedule:
     (deadline: Mon 4 Sep 0:00, duration: 48h0, importance: 2)
 ```
 
+## Core principles
+
+1. Eva should be as **inobtrusive** as possible to maximise your flow, but
+   **obtrusive** to manage your time.
+2. Eva should maximise your **motivation** while minimising your time
+   **procrastinating**.
+3. **Automatic scheduling** should left to machines since humans are better at
+   deciding importance, deadlines and estimated duration of tasks then at
+   actually scheduling all the things in their lives.
+
+
+## Roadmap
+
+### v0.1 (short-term goals / MVP)
+
+- [x] Task persistence
+- [x] Minimal task management interface
+- [x] Automatic scheduling
+- [ ] User configuration
+- [ ] Manual scheduling of fixed events
+- [ ] Take fixed hours of sleeping and/or working into account
+
+### Next goals
+
+- CalDAV / Google Calendar integration
+  - Optional reminders
+- Life organising scheme (values → life goals → projects → tasks)
+
+### Unprioritised goals
+
+- Bulk-edit tasks
+- Integration with desktop environment
+- Time tracking + Pomodoro
+- "Forced" reflection
+- Web interface
+- Interactive terminal UI (possibly reusing [Procrat/eva-deprecated](https://github.com/Procrat/eva-deprecated), possibly with `ncurses`)
+- Scratchpad
+- Laudatory diary
+- Frozen tasks
+- API/hooks for easy extension
+- Integration with TaskWarrior (if at all possible)
+
 
 ## Acknowledgements
 

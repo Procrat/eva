@@ -25,12 +25,15 @@ the frog, etc.
 
 ## Installation
 
-If you haven't compiled Rust before, start by installing
+If you haven't built a Rust project before, start by installing
 [rustup](https://www.rustup.rs), and running `rustup install nightly` to install
-the latest nightly version of Rust.
+the latest nightly version of Rust. Second, add `$HOME/.cargo/bin` to your
+`PATH`, e.g. by adding this line to your `~/.bashrc`:
+```sh
+export PATH="$PATH:$HOME/.cargo/bin"
+```
 
-Then clone this repository, run `cargo +nightly build --release` and put the
-generated binary `./target/release/eva` somewhere in your `PATH`.
+Finally, to install Eva, clone this repository and run `cargo +nightly install`.
 
 
 ## Usage

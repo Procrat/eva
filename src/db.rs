@@ -2,7 +2,7 @@
 
 use std::io;
 
-use chrono::{DateTime, Duration, NaiveDateTime, UTC};
+use chrono::{Duration, Local, NaiveDateTime, TimeZone};
 use diesel::associations::HasTable;
 use diesel::backend::Backend;
 use diesel::expression::AsExpression;
@@ -54,7 +54,7 @@ impl<DB> Queryable<(Integer, Text, Integer, Integer, Integer), DB> for Task
 
     fn build(row: Self::Row) -> Task {
         let naive_deadline = NaiveDateTime::from_timestamp(row.2 as i64, 0);
-        let deadline = DateTime::from_utc(naive_deadline, UTC);
+        let deadline = Local.from_utc_datetime(&naive_deadline);
         let duration = Duration::seconds(row.3 as i64);
         Task {
             id: Some(row.0 as u32),
@@ -172,9 +172,8 @@ mod tests {
 
         let mut tasks_ = tasks.load::<Task>(&connection).unwrap();
         let mut task = tasks_.pop().unwrap();
-        let deadline = DateTime::<UTC>::from_utc(
-            NaiveDateTime::parse_from_str("2015-09-05 23:56:04", "%Y-%m-%d %H:%M:%S").unwrap(),
-            UTC);
+        let deadline = Local.from_utc_datetime(
+            &NaiveDateTime::parse_from_str("2015-09-05 23:56:04", "%Y-%m-%d %H:%M:%S").unwrap());
         task.content = "stuff".to_string();
         task.deadline = deadline;
         task.duration = Duration::minutes(7);
@@ -198,7 +197,7 @@ mod tests {
         Task {
             id: None,
             content: "do me".to_string(),
-            deadline: UTC::now().with_nanosecond(0).unwrap(),
+            deadline: Local::now().with_nanosecond(0).unwrap(),
             duration: Duration::seconds(6),
             importance: 42,
         }

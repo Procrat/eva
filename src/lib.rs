@@ -137,7 +137,7 @@ pub fn print_schedule(algorithm: &str) {
 pub struct Task {
     id: Option<u32>,
     content: String,
-    deadline: DateTime<UTC>,
+    deadline: DateTime<Local>,
     duration: Duration,
     importance: u32,
 }
@@ -172,7 +172,7 @@ impl Hash for Task {
 #[derive(Debug, new)]
 struct ScheduledTask<'a> {
     task: &'a Task,
-    when: DateTime<UTC>,
+    when: DateTime<Local>,
 }
 
 #[derive(Debug)]
@@ -209,7 +209,7 @@ impl<'a> Schedule<'a> {
     {
         let mut tree = ScheduleTree::new();
         // Make sure things aren't scheduled before the algorithm is finished.
-        let now = UTC::now() + *SCHEDULE_DELAY;
+        let now = Local::now() + *SCHEDULE_DELAY;
         // Start by scheduling the least important tasks closest to the deadline, and so on.
         let mut tasks: Vec<&Task> = tasks.into_iter().collect::<Vec<_>>();
         tasks.sort_by_key(|task| (task.importance, now.signed_duration_since(task.deadline)));
@@ -260,7 +260,7 @@ impl<'a> Schedule<'a> {
     {
         let mut tree = ScheduleTree::new();
         // Make sure things aren't scheduled before the algorithm is finished.
-        let now = UTC::now() + *SCHEDULE_DELAY;
+        let now = Local::now() + *SCHEDULE_DELAY;
         // Start by scheduling the least important tasks closest to the deadline, and so on.
         let mut tasks: Vec<&Task> = tasks.into_iter().collect::<Vec<_>>();
         tasks.sort_by_key(|task| task.importance);
@@ -286,7 +286,7 @@ impl<'a> Schedule<'a> {
         Schedule::tree_to_schedule(&tree)
     }
 
-    fn tree_to_schedule(tree: &ScheduleTree<'a, DateTime<UTC>, Task>) -> Schedule<'a> {
+    fn tree_to_schedule(tree: &ScheduleTree<'a, DateTime<Local>, Task>) -> Schedule<'a> {
         let scheduled_tasks = tree.iter()
             .map(|entry| ScheduledTask::new(entry.data, entry.start))
             .collect();
@@ -321,8 +321,8 @@ impl fmt::Display for Task {
     }
 }
 
-fn format_datetime(datetime: DateTime<UTC>) -> String {
-    let format = if datetime.year() == UTC::now().year() {
+fn format_datetime(datetime: DateTime<Local>) -> String {
+    let format = if datetime.year() == Local::now().year() {
         "%a %-d %b %-H:%M"
     } else {
         "%a %-d %b %Y %-H:%M"
@@ -338,8 +338,8 @@ fn format_duration(duration: Duration) -> String {
     }
 }
 
-fn parse_datetime(datetime: &str) -> DateTime<UTC> {
-    UTC.datetime_from_str(datetime, "%-d %b %Y %-H:%M")
+fn parse_datetime(datetime: &str) -> DateTime<Local> {
+    Local.datetime_from_str(datetime, "%-d %b %Y %-H:%M")
         .expect("Could not parse deadline. Please provide something like '4 Jul 2017 6:05'.")
 }
 
@@ -392,9 +392,9 @@ mod tests {
                         assert_eq!(*schedule.0[0].task, tasks[0]);
                         assert_eq!(*schedule.0[1].task, tasks[1]);
                         assert!(are_approx_equal(schedule.0[0].when,
-                                                 UTC::now() + *SCHEDULE_DELAY));
+                                                 Local::now() + *SCHEDULE_DELAY));
                         assert!(are_approx_equal(schedule.0[1].when,
-                                                 UTC::now() - *SCHEDULE_DELAY
+                                                 Local::now() - *SCHEDULE_DELAY
                                                  + Duration::days(23 * 365)));
                     }
 
@@ -403,14 +403,14 @@ mod tests {
                         let mut tasks = vec![Task {
                             id: None,
                             content: "find meaning to life".to_string(),
-                            deadline: UTC::now() + Duration::hours(1),
+                            deadline: Local::now() + Duration::hours(1),
                             duration: Duration::hours(1) - *SCHEDULE_DELAY * 2,
                             importance: 6,
                         },
                         Task {
                             id: None,
                             content: "stop giving a fuck".to_string(),
-                            deadline: UTC::now() + Duration::hours(3),
+                            deadline: Local::now() + Duration::hours(3),
                             duration: Duration::hours(2) - *SCHEDULE_DELAY * 2,
                             importance: 5,
                         }];
@@ -432,7 +432,7 @@ mod tests {
                         }
 
                         // Leveling the deadlines should make the more important task be scheduled first again.
-                        tasks[0].deadline = UTC::now() + Duration::hours(3);
+                        tasks[0].deadline = Local::now() + Duration::hours(3);
                         let schedule = $schedule_fn(&tasks);
                         assert_eq!(*schedule.0[0].task, tasks[1]);
                         assert_eq!(*schedule.0[1].task, tasks[0]);
@@ -477,42 +477,42 @@ mod tests {
         let task1 = Task {
             id: None,
             content: "take over the world".to_string(),
-            deadline: UTC::now() + Duration::days(6 * 365),
+            deadline: Local::now() + Duration::days(6 * 365),
             duration: Duration::hours(1000),
             importance: 10,
         };
         let task2 = Task {
             id: None,
             content: "make onion soup".to_string(),
-            deadline: UTC::now() + Duration::hours(2),
+            deadline: Local::now() + Duration::hours(2),
             duration: Duration::hours(1),
             importance: 3,
         };
         let task3 = Task {
             id: None,
             content: "publish Commander Mango 3".to_string(),
-            deadline: UTC::now() + Duration::days(365 / 2),
+            deadline: Local::now() + Duration::days(365 / 2),
             duration: Duration::hours(50),
             importance: 6,
         };
         let task4 = Task {
             id: None,
             content: "sculpt".to_string(),
-            deadline: UTC::now() + Duration::days(30),
+            deadline: Local::now() + Duration::days(30),
             duration: Duration::hours(10),
             importance: 4,
         };
         let task5 = Task {
             id: None,
             content: "organise birthday present".to_string(),
-            deadline: UTC::now() + Duration::days(30),
+            deadline: Local::now() + Duration::days(30),
             duration: Duration::hours(5),
             importance: 10,
         };
         let task6 = Task {
             id: None,
             content: "make dentist appointment".to_string(),
-            deadline: UTC::now() + Duration::days(7),
+            deadline: Local::now() + Duration::days(7),
             duration: Duration::minutes(10),
             importance: 5,
         };
@@ -523,14 +523,14 @@ mod tests {
         let task1 = Task {
             id: None,
             content: "go to school".to_string(),
-            deadline: UTC::now() + Duration::days(23 * 365),
+            deadline: Local::now() + Duration::days(23 * 365),
             duration: Duration::days(23 * 365) - *SCHEDULE_DELAY * 2,
             importance: 5,
         };
         let task2 = Task {
             id: None,
             content: "work till you die".to_string(),
-            deadline: UTC::now() + Duration::days(65 * 365),
+            deadline: Local::now() + Duration::days(65 * 365),
             duration: Duration::days(42 * 365),
             importance: 6,
         };
@@ -541,7 +541,7 @@ mod tests {
     fn schedule_for_myrjam() {
         let tasks = taskset_of_myrjam();
         let schedule = Schedule::schedule_according_to_myrjam(&tasks);
-        let mut expected_when = UTC::now() + *SCHEDULE_DELAY;
+        let mut expected_when = Local::now() + *SCHEDULE_DELAY;
         // 1. Make onion soup, 1h, 3, in 2 hours
         assert_eq!(*schedule.0[0].task, tasks[1]);
         assert!(are_approx_equal(schedule.0[0].when, expected_when));
@@ -571,7 +571,7 @@ mod tests {
     fn schedule_myrjams_schedule_by_importance() {
         let tasks = taskset_of_myrjam();
         let schedule = Schedule::schedule_according_to_importance(&tasks);
-        let mut expected_when = UTC::now() + *SCHEDULE_DELAY;
+        let mut expected_when = Local::now() + *SCHEDULE_DELAY;
         // 5. Make dentist appointment, 10m, 5, in 7 days
         assert_eq!(*schedule.0[0].task, tasks[5]);
         assert!(are_approx_equal(schedule.0[0].when, expected_when));
@@ -602,63 +602,63 @@ mod tests {
             Task {
                 id: None,
                 content: "Think of plan to get rid of The Ring".to_string(),
-                deadline: UTC::now() + Duration::days(12) + Duration::hours(15),
+                deadline: Local::now() + Duration::days(12) + Duration::hours(15),
                 duration: Duration::days(2),
                 importance: 9
             },
             Task {
                 id: None,
                 content: "Ask advice from Saruman".to_string(),
-                deadline: UTC::now() + Duration::days(8) + Duration::hours(15),
+                deadline: Local::now() + Duration::days(8) + Duration::hours(15),
                 duration: Duration::days(3),
                 importance: 4
             },
             Task {
                 id: None,
                 content: "Visit Bilbo in Rivendel".to_string(),
-                deadline: UTC::now() + Duration::days(13) + Duration::hours(15),
+                deadline: Local::now() + Duration::days(13) + Duration::hours(15),
                 duration: Duration::days(2),
                 importance: 2
             },
             Task {
                 id: None,
                 content: "Make some firework for the hobbits".to_string(),
-                deadline: UTC::now() + Duration::hours(33),
+                deadline: Local::now() + Duration::hours(33),
                 duration: Duration::hours(3),
                 importance: 3
             },
             Task {
                 id: None,
                 content: "Get riders of Rohan to help Gondor".to_string(),
-                deadline: UTC::now() + Duration::days(21) + Duration::hours(15),
+                deadline: Local::now() + Duration::days(21) + Duration::hours(15),
                 duration: Duration::days(7),
                 importance: 7,
             },
             Task {
                 id: None,
                 content: "Find some good pipe-weed".to_string(),
-                deadline: UTC::now() + Duration::days(2) + Duration::hours(15),
+                deadline: Local::now() + Duration::days(2) + Duration::hours(15),
                 duration: Duration::hours(1),
                 importance: 8
             },
             Task {
                 id: None,
                 content: "Go shop for white clothing".to_string(),
-                deadline: UTC::now() + Duration::days(33) + Duration::hours(15),
+                deadline: Local::now() + Duration::days(33) + Duration::hours(15),
                 duration: Duration::hours(2),
                 importance: 3
             },
             Task {
                 id: None,
                 content: "Prepare epic-sounding one-liners".to_string(),
-                deadline: UTC::now() + Duration::hours(34),
+                deadline: Local::now() + Duration::hours(34),
                 duration: Duration::hours(2),
                 importance: 10
             },
             Task {
                 id: None,
                 content: "Recharge staff batteries".to_string(),
-                deadline: UTC::now() + Duration::days(1) + Duration::hours(15),
+                deadline: Local::now() + Duration::days(1) + Duration::hours(15),
                 duration: Duration::minutes(30),
                 importance: 5
             },
@@ -669,7 +669,7 @@ mod tests {
     fn schedule_gandalfs_schedule_by_importance() {
         let tasks = taskset_of_gandalf();
         let schedule = Schedule::schedule_according_to_importance(&tasks);
-        let mut expected_when = UTC::now() + *SCHEDULE_DELAY;
+        let mut expected_when = Local::now() + *SCHEDULE_DELAY;
         // 7. Prepare epic-sounding one-liners
         assert_eq!(*schedule.0[0].task, tasks[7]);
         assert!(are_approx_equal(schedule.0[0].when, expected_when));
@@ -712,14 +712,14 @@ mod tests {
         let mut tasks = vec![Task {
             id: None,
             content: "find meaning to life".to_string(),
-            deadline: UTC::now() + Duration::hours(1),
+            deadline: Local::now() + Duration::hours(1),
             duration: Duration::hours(1) - *SCHEDULE_DELAY * 2,
             importance: 6,
         },
         Task {
             id: None,
             content: "stop giving a fuck".to_string(),
-            deadline: UTC::now() + Duration::hours(3),
+            deadline: Local::now() + Duration::hours(3),
             duration: Duration::hours(2) - *SCHEDULE_DELAY * 2,
             importance: 5,
         }];
@@ -741,7 +741,7 @@ mod tests {
         }
 
         // Leveling the deadlines should make the more important task be scheduled first again.
-        tasks[0].deadline = UTC::now() + Duration::hours(3);
+        tasks[0].deadline = Local::now() + Duration::hours(3);
         let schedule = Schedule::schedule_according_to_importance(&tasks);
         assert_eq!(*schedule.0[0].task, tasks[1]);
         assert_eq!(*schedule.0[1].task, tasks[0]);
@@ -751,14 +751,14 @@ mod tests {
         let task1 = Task {
             id: None,
             content: "conquer the world".to_string(),
-            deadline: UTC::now() + Duration::days(3),
+            deadline: Local::now() + Duration::days(3),
             duration: Duration::days(1),
             importance: 5,
         };
         let task2 = Task {
             id: None,
             content: "save the world".to_string(),
-            deadline: UTC::now() - Duration::days(1),
+            deadline: Local::now() - Duration::days(1),
             duration: Duration::minutes(5),
             importance: 5,
         };
@@ -769,21 +769,21 @@ mod tests {
         let task1 = Task {
             id: None,
             content: "Learn Rust".to_string(),
-            deadline: UTC::now() + Duration::days(1),
+            deadline: Local::now() + Duration::days(1),
             duration: Duration::days(1),
             importance: 5,
         };
         let task2 = Task {
             id: None,
             content: "Program Eva".to_string(),
-            deadline: UTC::now() - Duration::days(2),
+            deadline: Local::now() - Duration::days(2),
             duration: Duration::days(1) + Duration::minutes(1),
             importance: 5,
         };
         vec![task1, task2]
     }
 
-    fn are_approx_equal(datetime1: DateTime<UTC>, datetime2: DateTime<UTC>) -> bool {
+    fn are_approx_equal(datetime1: DateTime<Local>, datetime2: DateTime<Local>) -> bool {
         datetime1 < datetime2 + Duration::seconds(2)
             && datetime2 < datetime1 + Duration::seconds(2)
     }

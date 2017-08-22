@@ -4,7 +4,7 @@ version = "0.0.1"
 authors = ["Stijn Seghers <stijnseghers@gmail.com>"]
 
 [dependencies]
-chrono = "0.3"
+chrono = "0.4"
 clap = "2.24"
 diesel = {version = "0.12", features = ["sqlite", "chrono"]}
 diesel_codegen = {version = "0.12", features = ["sqlite"]}

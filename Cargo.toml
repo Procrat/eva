@@ -11,6 +11,7 @@ diesel_codegen = {version = "0.12", features = ["sqlite"]}
 derive-new = "0.4"
 itertools = "0.6"
 lazy_static = "0.2"
+libsqlite3-sys = {version = "0.7.1", features = ["bundled"]}
 take_mut = "0.1"
 
 [dev-dependencies]

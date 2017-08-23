@@ -150,7 +150,7 @@ Schedule:
    **obtrusive** to manage your time.
 2. Eva should maximise your **motivation** while minimising your time
    **procrastinating**.
-3. **Automatic scheduling** should left to machines since humans are better at
+3. **Automatic scheduling** should be left to machines since humans are better at
    deciding importance, deadlines and estimated duration of tasks then at
    actually scheduling all the things in their lives.
 

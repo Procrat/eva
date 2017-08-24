@@ -39,7 +39,7 @@ mod schedule_tree;
 
 lazy_static! {
     static ref SCHEDULE_DELAY: Duration = Duration::minutes(1);
-    static ref CONFIG: config::Config = configuration::read();
+    pub static ref CONFIG: config::Config = configuration::read();
 }
 
 

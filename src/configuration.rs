@@ -53,7 +53,12 @@ pub fn read() -> config::Config {
 fn set_defaults(settings: &mut config::Config) -> &mut config::Config {
     let db_filename = DATA_ROOT.join("db.sqlite");
     let db_filename = db_filename.to_str().unwrap();
+
     settings
+        .set_default("scheduling_algorithm", "importance")
+        .unwrap_or_else(|err| {
+            panic!(format!("An error occured while setting configuration defaults: {}", err));
+        })
         .set_default("database", db_filename)
         .unwrap_or_else(|err| {
             panic!(format!("An error occured while setting configuration defaults: {}", err));

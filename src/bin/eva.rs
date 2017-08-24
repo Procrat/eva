@@ -1,8 +1,18 @@
 extern crate chrono;
 extern crate clap;
+#[macro_use]
+extern crate lazy_static;
+
 extern crate eva;
 
 use clap::{App, AppSettings, Arg, SubCommand};
+
+lazy_static! {
+    static ref DEFAULT_SCHEDULING_ALGORITHM: String = eva::CONFIG.get_str("scheduling_algorithm")
+        .unwrap_or_else(|err| {
+            panic!(format!("An error occured while reading the default algorithm: {}", err));
+        });
+}
 
 
 fn cli<'a, 'b>() -> App<'a, 'b> {
@@ -33,7 +43,7 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
              .long("algorithm")
              .takes_value(true)
              .possible_values(&["importance", "urgency"])
-             .default_value("importance"));
+             .default_value(&DEFAULT_SCHEDULING_ALGORITHM));
 
     return App::new("eva")
         .version(env!("CARGO_PKG_VERSION"))

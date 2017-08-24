@@ -22,6 +22,16 @@ the Eisenhower scheme, flow, focussing on one task, small-chunking work, eating
 the frog, etc.
 
 
+## Core principles
+
+1. Eva should be as **inobtrusive** as possible to maximise your flow, but
+   **obtrusive** to manage your time.
+2. Eva should maximise your **motivation** while minimising your time
+   **procrastinating**.
+3. **Automatic scheduling** should left to machines since humans are better at
+   deciding importance, deadlines and estimated duration of tasks then at
+   actually scheduling all the things in their lives.
+
 
 ## Installation
 
@@ -144,15 +154,25 @@ Schedule:
     (deadline: Mon 4 Sep 0:00, duration: 48h0, importance: 2)
 ```
 
-## Core principles
 
-1. Eva should be as **inobtrusive** as possible to maximise your flow, but
-   **obtrusive** to manage your time.
-2. Eva should maximise your **motivation** while minimising your time
-   **procrastinating**.
-3. **Automatic scheduling** should left to machines since humans are better at
-   deciding importance, deadlines and estimated duration of tasks then at
-   actually scheduling all the things in their lives.
+## Configuration
+
+Eva Just Works™ without any extra configuration.
+
+There are some things you could change if you really wanted to, by making a file
+called `~/.config/eva/eva.toml` on GNU/Linux, `~/Library/Application
+Support/eva/eva.toml` on Mac OS or
+`C:\Users\<username>\AppData\Roaming\eva\eva.toml` on Windows. You can use '~'
+and refer to environment variables if you want. These are the options you can
+set at the moment, alongside their defaults:
+```toml
+# On GNU/Linux
+database = "~/.local/share/eva/db.sqlite"
+# On Mac OS
+database = "~/Library/Application Support/eva/db.sqlite"
+# On Windows
+database = "C:\Users\<username>\AppData\Roaming\eva\db.sqlite"
+```
 
 
 ## Roadmap
@@ -162,7 +182,7 @@ Schedule:
 - [x] Task persistence
 - [x] Minimal task management interface
 - [x] Automatic scheduling
-- [ ] User configuration
+- [x] User configuration
 - [ ] Manual scheduling of fixed events
 - [ ] Take fixed hours of sleeping and/or working into account
 

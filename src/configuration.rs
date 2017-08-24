@@ -55,7 +55,7 @@ fn set_defaults(settings: &mut config::Config) -> &mut config::Config {
     let db_filename = db_filename.to_str().unwrap();
 
     settings
-        .set_default("scheduling_algorithm", "importance")
+        .set_default("scheduling_strategy", "importance")
         .unwrap_or_else(|err| {
             panic!(format!("An error occured while setting configuration defaults: {}", err));
         })

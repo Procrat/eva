@@ -162,16 +162,22 @@ Eva Just Works™ without any extra configuration.
 There are some things you could change if you really wanted to, by making a file
 called `~/.config/eva/eva.toml` on GNU/Linux, `~/Library/Application
 Support/eva/eva.toml` on Mac OS or
-`C:\Users\<username>\AppData\Roaming\eva\eva.toml` on Windows. You can use '~'
-and refer to environment variables if you want. These are the options you can
-set at the moment, alongside their defaults:
+`C:\Users\<username>\AppData\Roaming\eva\eva.toml` on Windows. You can use
+`~` and refer to environment variables if you want. These are the options you
+can set at the moment, alongside their defaults:
+
 ```toml
-# On GNU/Linux
+# Which scheduling algorithm to use by default.
+# This can be overridden with the --strategy flag to `eva schedule`
+scheduling_strategy = "importance"
+
+# Where Eva should store its SQLite database.
+#   On GNU/Linux
 database = "~/.local/share/eva/db.sqlite"
-# On Mac OS
+#   On Mac OS
 database = "~/Library/Application Support/eva/db.sqlite"
-# On Windows
-database = "C:\Users\<username>\AppData\Roaming\eva\db.sqlite"
+#   On Windows
+database = "C:\\Users\\<username>\\AppData\\Roaming\\eva\\db.sqlite"
 ```
 
 

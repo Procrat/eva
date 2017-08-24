@@ -113,8 +113,8 @@ pub fn set(field_name: &str, id: u32, value: &str) {
     }
 }
 
-pub fn print_schedule(algorithm: &str) {
-    assert!(["importance", "urgency"].contains(&algorithm));
+pub fn print_schedule(strategy: &str) {
+    assert!(["importance", "urgency"].contains(&strategy));
 
     use db::tasks::dsl::tasks;
 
@@ -129,10 +129,10 @@ pub fn print_schedule(algorithm: &str) {
         println!("  {}", task);
     }
 
-    let schedule = match algorithm {
+    let schedule = match strategy {
         "importance" => Schedule::schedule_according_to_importance(&tasks_),
         "urgency" => Schedule::schedule_according_to_myrjam(&tasks_),
-        _ => panic!(format!("There is no scheduling algorithm called \"{}\".", algorithm)),
+        _ => panic!(format!("There is no scheduling strategy called \"{}\".", strategy)),
     };
     println!("\n{}", schedule);
 }

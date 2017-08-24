@@ -8,9 +8,9 @@ extern crate eva;
 use clap::{App, AppSettings, Arg, SubCommand};
 
 lazy_static! {
-    static ref DEFAULT_SCHEDULING_ALGORITHM: String = eva::CONFIG.get_str("scheduling_algorithm")
+    static ref DEFAULT_SCHEDULING_STRATEGY: String = eva::CONFIG.get_str("scheduling_strategy")
         .unwrap_or_else(|err| {
-            panic!(format!("An error occured while reading the default algorithm: {}", err));
+            panic!(format!("An error occured while reading the default strategy: {}", err));
         });
 }
 
@@ -39,11 +39,11 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         .arg(Arg::with_name("value").required(true));
     let schedule = SubCommand::with_name("schedule")
         .about("Lets Eva suggest a schedule for your tasks")
-        .arg(Arg::with_name("algorithm")
-             .long("algorithm")
+        .arg(Arg::with_name("strategy")
+             .long("strategy")
              .takes_value(true)
              .possible_values(&["importance", "urgency"])
-             .default_value(&DEFAULT_SCHEDULING_ALGORITHM));
+             .default_value(&DEFAULT_SCHEDULING_STRATEGY));
 
     return App::new("eva")
         .version(env!("CARGO_PKG_VERSION"))
@@ -83,8 +83,8 @@ fn main() {
             eva::set(field, id, value);
         }
         ("schedule", Some(submatches)) => {
-            let algorithm = submatches.value_of("algorithm").unwrap();
-            eva::print_schedule(algorithm)
+            let strategy = submatches.value_of("strategy").unwrap();
+            eva::print_schedule(strategy)
         },
         _ => unreachable!(),
     };

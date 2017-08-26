@@ -4,14 +4,17 @@ version = "0.0.1"
 authors = ["Stijn Seghers <stijnseghers@gmail.com>"]
 
 [dependencies]
+app_dirs = "1.1"
 chrono = "0.4"
 clap = "2.24"
+config = "0.7"
 diesel = {version = "0.12", features = ["sqlite", "chrono"]}
 diesel_codegen = {version = "0.12", features = ["sqlite"]}
 derive-new = "0.4"
 itertools = "0.6"
 lazy_static = "0.2"
 libsqlite3-sys = {version = "0.7.1", features = ["bundled"]}
+shellexpand = "1.0"
 take_mut = "0.1"
 
 [dev-dependencies]

@@ -3,6 +3,7 @@
 use std::io;
 
 use chrono::{Duration, Local, NaiveDateTime, TimeZone};
+use config;
 use diesel::associations::HasTable;
 use diesel::backend::Backend;
 use diesel::expression::AsExpression;
@@ -17,8 +18,6 @@ use diesel::types::{FromSql, HasSqlType, Integer, Text};
 use super::Task;
 
 
-const DATABASE_URL: &'static str = "db.sqlite";
-
 table! {
     tasks (id) {
         id -> Integer,
@@ -32,8 +31,12 @@ table! {
 embed_migrations!();
 
 
-pub fn make_connection() -> SqliteConnection {
-    make_connection_with(DATABASE_URL)
+pub fn make_connection(settings: &config::Config) -> SqliteConnection {
+    let database_url = settings.get_str("database")
+        .unwrap_or_else(|err| {
+            panic!(format!("An error occured while trying to read database path: {}", err))
+        });
+    make_connection_with(&database_url)
 }
 
 fn make_connection_with(database_url: &str) -> SqliteConnection {

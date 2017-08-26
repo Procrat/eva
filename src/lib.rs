@@ -1,8 +1,10 @@
 #![feature(box_patterns)]
 
+extern crate app_dirs;
 #[macro_use]
 extern crate derive_new;
 extern crate chrono;
+extern crate config;
 #[macro_use]
 extern crate diesel;
 #[macro_use]
@@ -10,6 +12,7 @@ extern crate diesel_codegen;
 extern crate itertools;
 #[macro_use]
 extern crate lazy_static;
+extern crate shellexpand;
 extern crate take_mut;
 
 #[cfg(test)]
@@ -30,18 +33,20 @@ use schedule_tree::ScheduleTree;
 #[macro_use]
 mod util;
 
+mod configuration;
 mod db;
 mod schedule_tree;
 
 lazy_static! {
     static ref SCHEDULE_DELAY: Duration = Duration::minutes(1);
+    pub static ref CONFIG: config::Config = configuration::read();
 }
 
 
 pub fn add(content: &str, deadline: &str, duration: &str, importance: u32) {
     use db::tasks::dsl::tasks;
 
-    let connection = db::make_connection();
+    let connection = db::make_connection(&CONFIG);
 
     let deadline = parse_datetime(deadline);
     let duration = parse_duration(duration);
@@ -62,7 +67,7 @@ pub fn add(content: &str, deadline: &str, duration: &str, importance: u32) {
 pub fn remove(id: u32) {
     use db::tasks::dsl::tasks;
 
-    let connection = db::make_connection();
+    let connection = db::make_connection(&CONFIG);
 
     let amount_deleted =
         diesel::delete(tasks.find(id as i32))
@@ -81,7 +86,7 @@ pub fn set(field_name: &str, id: u32, value: &str) {
 
     use db::tasks::dsl::tasks;
 
-    let connection = db::make_connection();
+    let connection = db::make_connection(&CONFIG);
 
     let mut task: Task = tasks.find(id as i32)
         .first(&connection)
@@ -108,12 +113,12 @@ pub fn set(field_name: &str, id: u32, value: &str) {
     }
 }
 
-pub fn print_schedule(algorithm: &str) {
-    assert!(["importance", "urgency"].contains(&algorithm));
+pub fn print_schedule(strategy: &str) {
+    assert!(["importance", "urgency"].contains(&strategy));
 
     use db::tasks::dsl::tasks;
 
-    let connection = db::make_connection();
+    let connection = db::make_connection(&CONFIG);
 
     let tasks_ = tasks
         .load::<Task>(&connection)
@@ -124,10 +129,10 @@ pub fn print_schedule(algorithm: &str) {
         println!("  {}", task);
     }
 
-    let schedule = match algorithm {
+    let schedule = match strategy {
         "importance" => Schedule::schedule_according_to_importance(&tasks_),
         "urgency" => Schedule::schedule_according_to_myrjam(&tasks_),
-        _ => panic!(format!("There is no scheduling algorithm called \"{}\".", algorithm)),
+        _ => panic!(format!("There is no scheduling strategy called \"{}\".", strategy)),
     };
     println!("\n{}", schedule);
 }

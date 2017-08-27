@@ -6,16 +6,16 @@ authors = ["Stijn Seghers <stijnseghers@gmail.com>"]
 [dependencies]
 app_dirs = "1.1"
 chrono = "0.4"
-clap = "2.24"
+clap = "2.26"
 config = "0.7"
-diesel = {version = "0.12", features = ["sqlite", "chrono"]}
-diesel_codegen = {version = "0.12", features = ["sqlite"]}
-derive-new = "0.4"
+diesel = {version = "0.16", features = ["sqlite", "chrono"]}
+diesel_codegen = {version = "0.16", features = ["sqlite"]}
+derive-new = "0.5"
 itertools = "0.6"
 lazy_static = "0.2"
-libsqlite3-sys = {version = "0.7.1", features = ["bundled"]}
+libsqlite3-sys = {version = "0.8.1", features = ["bundled"]}
 shellexpand = "1.0"
-take_mut = "0.1"
+take_mut = "0.2"
 
 [dev-dependencies]
 assert_matches = "1.1"

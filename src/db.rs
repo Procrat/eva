@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::io;
 
 use chrono::{Duration, Local, NaiveDateTime, TimeZone};
@@ -7,7 +5,7 @@ use config;
 use diesel::associations::HasTable;
 use diesel::backend::Backend;
 use diesel::expression::AsExpression;
-use diesel::expression::helper_types::{AsNullableExpr, Eq};
+use diesel::expression::helper_types::{AsExpr, Eq};
 use diesel::insertable::ColumnInsertValue;
 use diesel::prelude::*;
 use diesel::query_builder::AsChangeset;
@@ -71,14 +69,12 @@ impl<DB> Queryable<(Integer, Text, Integer, Integer, Integer), DB> for Task
 
 
 impl<'a> Insertable<tasks::table, Sqlite> for &'a Task {
-    type Values = (ColumnInsertValue<tasks::content, AsNullableExpr<String, tasks::content>>,
-     ColumnInsertValue<tasks::deadline, AsNullableExpr<i32, tasks::deadline>>,
-     ColumnInsertValue<tasks::duration, AsNullableExpr<i32, tasks::duration>>,
-     ColumnInsertValue<tasks::importance, AsNullableExpr<i32, tasks::importance>>);
+    type Values = (ColumnInsertValue<tasks::content, AsExpr<String, tasks::content>>,
+                   ColumnInsertValue<tasks::deadline, AsExpr<i32, tasks::deadline>>,
+                   ColumnInsertValue<tasks::duration, AsExpr<i32, tasks::duration>>,
+                   ColumnInsertValue<tasks::importance, AsExpr<i32, tasks::importance>>);
 
     fn values(self) -> Self::Values {
-        use diesel::types::IntoNullable;
-
         (Insertable_column_expr!(tasks::content, self.content.clone(), regular),
          Insertable_column_expr!(tasks::deadline, self.deadline.timestamp() as i32, regular),
          Insertable_column_expr!(tasks::duration, self.duration.num_seconds() as i32, regular),

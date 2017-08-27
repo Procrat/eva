@@ -45,7 +45,7 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
              .possible_values(&["importance", "urgency"])
              .default_value(&DEFAULT_SCHEDULING_STRATEGY));
 
-    return App::new("eva")
+    App::new("eva")
         .version(env!("CARGO_PKG_VERSION"))
         .global_setting(AppSettings::ColoredHelp)
         .setting(AppSettings::SubcommandRequiredElseHelp)

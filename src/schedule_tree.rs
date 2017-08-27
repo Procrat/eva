@@ -313,18 +313,15 @@ impl<'a, T, D> Node<'a, T, D>
             } => {
                 // If the end is inside the right child, try that first
                 if free.end < end {
-                    match right.insert_before(end, duration, min_start, data) {
-                        Some(start) => return Some(start),
-                        None => ()
-                    }
+                    return_on_some!(right.insert_before(end, duration, min_start, data))
                 }
                 // Second, try to insert it in the free range of the current node
                 let end = min(end, free.end);
-                if free.start <= end - duration {
-                    if min_start.map_or(true, |min_start| min_start <= end - duration) {
-                        unchecked_insert(end - duration, end, data, right, free);
-                        return Some(end - duration)
-                    }
+                if free.start <= end - duration &&
+                    min_start.map_or(true, |min_start| min_start <= end - duration)
+                {
+                    unchecked_insert(end - duration, end, data, right, free);
+                    return Some(end - duration)
                 }
 
                 // If min_start is contained in free, don't bother checking the left child
@@ -355,18 +352,15 @@ impl<'a, T, D> Node<'a, T, D>
             } => {
                 // If the start is inside the left child, try that first
                 if start < free.start {
-                    match left.insert_after(start, duration, max_end, data) {
-                        Some(start) => return Some(start),
-                        None => ()
-                    }
+                    return_on_some!(left.insert_after(start, duration, max_end, data))
                 }
                 // Second, try to insert it in the free range of the current node
                 let start = max(start, free.start);
-                if start + duration <= free.end {
-                    if max_end.map_or(true, |max_end| start + duration <= max_end) {
-                        unchecked_insert(start, start + duration, data, right, free);
-                        return Some(start)
-                    }
+                if start + duration <= free.end
+                    && max_end.map_or(true, |max_end| start + duration <= max_end)
+                {
+                    unchecked_insert(start, start + duration, data, right, free);
+                    return Some(start)
                 }
                 // If max_end is contained in free, don't bother checking the right child
                 if max_end.map_or(true, |max_end| max_end <= free.end) {
@@ -505,7 +499,7 @@ impl<'a, T, D> Node<'a, T, D>
 /// node `x`. The original right node of `x` becomes the right node of the right node of `x` and
 /// the new node becomes the left node of the right node of `x`. The free range of `x` is also
 /// passed and updated.
-fn unchecked_insert<'a, T, D>(start: T, end: T, data: &'a D, right: &mut Box<Node<'a, T, D>>, free: &mut Range<T>)
+fn unchecked_insert<'a, T, D>(start: T, end: T, data: &'a D, right: &mut Node<'a, T, D>, free: &mut Range<T>)
     where T: Ord + Copy + Debug,
           D: Debug
 {
@@ -519,11 +513,11 @@ fn unchecked_insert<'a, T, D>(start: T, end: T, data: &'a D, right: &mut Box<Nod
     };
 
     take_mut::take(right, |right_value| {
-        Box::new(Node::Intermediate {
+        Node::Intermediate {
             left: Box::new(new_node),
-            right: right_value,
+            right: Box::new(right_value),
             free: end..free.end,
-        })
+        }
     });
 
     *free = free.start..start;

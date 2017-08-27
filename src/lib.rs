@@ -218,7 +218,7 @@ impl<'a> Schedule<'a> {
         // Start by scheduling the least important tasks closest to the deadline, and so on.
         let mut tasks: Vec<&Task> = tasks.into_iter().collect::<Vec<_>>();
         tasks.sort_by_key(|task| (task.importance, now.signed_duration_since(task.deadline)));
-        for task in tasks.iter() {
+        for task in &tasks {
             if task.deadline <= now {
                 // TODO Figure out what should be done in this case
                 panic!("Aaargh! You missed the deadline of task {}.", task)
@@ -269,7 +269,7 @@ impl<'a> Schedule<'a> {
         // Start by scheduling the least important tasks closest to the deadline, and so on.
         let mut tasks: Vec<&Task> = tasks.into_iter().collect::<Vec<_>>();
         tasks.sort_by_key(|task| task.importance);
-        for task in tasks.iter() {
+        for task in &tasks {
             if task.deadline <= now {
                 // TODO Figure out what should be done in this case
                 panic!("Aaargh! You missed the deadline of task {}.", task)

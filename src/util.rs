@@ -1,8 +1,7 @@
 macro_rules! return_on_some {
     ($e:expr) => (
-        match $e {
-            Some(value) => return Some(value),
-            None => ()
+        if let Some(value) = $e {
+            return Some(value)
         }
     )
 }

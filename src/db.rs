@@ -68,6 +68,7 @@ impl<DB> Queryable<(Integer, Text, Integer, Integer, Integer), DB> for Task
 }
 
 
+#[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
 impl<'a> Insertable<tasks::table, Sqlite> for &'a Task {
     type Values = (ColumnInsertValue<tasks::content, AsExpr<String, tasks::content>>,
                    ColumnInsertValue<tasks::deadline, AsExpr<i32, tasks::deadline>>,
@@ -108,6 +109,7 @@ impl HasTable for Task {
 }
 
 
+#[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
 impl AsChangeset for Task {
     type Target = tasks::dsl::tasks;
     type Changeset = (Eq<tasks::dsl::content, String>,

@@ -192,6 +192,7 @@ database = "C:\\Users\\<username>\\AppData\\Roaming\\eva\\db.sqlite"
 - [ ] Manual scheduling of fixed events
 - [ ] Recurring events
 - [ ] Take fixed hours of sleeping and/or working into account
+- [ ] Task dependencies
 
 ### Next goals
 

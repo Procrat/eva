@@ -53,9 +53,9 @@ pub fn add(content: &str, deadline: &str, duration: &str, importance: u32) {
     let new_task = Task {
         id: None,
         content: content.to_string(),
-        deadline: deadline,
-        duration: duration,
-        importance: importance,
+        deadline,
+        duration,
+        importance,
     };
 
     diesel::insert(&new_task)

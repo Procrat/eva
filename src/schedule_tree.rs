@@ -108,11 +108,7 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
             // Schedule on [scope.start - duration, scope.start]
             let start = scope.start - duration;
             let end = scope.start;
-            let new_node = Node::Leaf {
-                start: start,
-                end: end,
-                data: data,
-            };
+            let new_node = Node::Leaf { start, end, data };
             self.root = Some(Node::Intermediate {
                                  left: Box::new(new_node),
                                  right: Box::new(self.root.take().unwrap()),
@@ -159,11 +155,7 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
             // Schedule on [scope.end, scope.end + duration]
             let start = scope.end;
             let end = scope.end + duration;
-            let new_node = Node::Leaf {
-                start: start,
-                end: end,
-                data: data,
-            };
+            let new_node = Node::Leaf { start, end, data };
             self.root = Some(Node::Intermediate {
                                  left: Box::new(self.root.take().unwrap()),
                                  right: Box::new(new_node),
@@ -183,11 +175,7 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
     ///
     /// Returns the start of the scheduling if it succeeded, otherwise None
     fn try_schedule_trivial_cases(&mut self, start: T, end: T, data: &'a D) -> Option<T> {
-        let new_node = Node::Leaf {
-            start: start,
-            end: end,
-            data: data,
-        };
+        let new_node = Node::Leaf { start, end, data };
 
         if self.root.is_none() {
             self.root = Some(new_node);
@@ -387,7 +375,7 @@ impl<'a, T, D> Node<'a, T, D>
                         Node::Leaf { start: node_start, end, data: node_data } => {
                             if start == node_start && data == node_data {
                                 take_mut::take(self, |self_| self_.unchecked_right());
-                                Some((Entry { start: start, end: end, data: data },
+                                Some((Entry { start, end, data },
                                       self.find_scope()))
                             } else {
                                 None
@@ -406,7 +394,7 @@ impl<'a, T, D> Node<'a, T, D>
                         Node::Leaf { start: node_start, end, data: node_data } => {
                             if start == node_start && data == node_data {
                                 take_mut::take(self, |self_| self_.unchecked_left());
-                                Some((Entry { start: start, end: end, data: data },
+                                Some((Entry { start, end, data },
                                       self.find_scope()))
                             } else {
                                 None
@@ -506,11 +494,7 @@ fn unchecked_insert<'a, T, D>(start: T, end: T, data: &'a D, right: &mut Node<'a
     assert!(free.start <= start);
     assert!(end <= free.end);
 
-    let new_node = Node::Leaf {
-        start: start,
-        end: end,
-        data: data,
-    };
+    let new_node = Node::Leaf { start, end, data };
 
     take_mut::take(right, |right_value| {
         Node::Intermediate {
@@ -556,11 +540,7 @@ impl<'b, 'a, T, D> Iterator for Iter<'b, 'a, T, D>
                     current = left;
                 }
                 if let Node::Leaf { start, end, data } = *current {
-                    Some(Entry {
-                             start: start,
-                             end: end,
-                             data: data,
-                         })
+                    Some(Entry { start, end, data })
                 } else {
                     None
                 }

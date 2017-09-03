@@ -1,4 +1,3 @@
-extern crate chrono;
 extern crate clap;
 #[macro_use]
 extern crate lazy_static;

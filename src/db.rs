@@ -54,14 +54,14 @@ impl<DB> Queryable<(Integer, Text, Integer, Integer, Integer), DB> for Task
     type Row = (i32, String, i32, i32, i32);
 
     fn build(row: Self::Row) -> Task {
-        let naive_deadline = NaiveDateTime::from_timestamp(row.2 as i64, 0);
+        let naive_deadline = NaiveDateTime::from_timestamp(i64::from(row.2), 0);
         let deadline = Local.from_utc_datetime(&naive_deadline);
-        let duration = Duration::seconds(row.3 as i64);
+        let duration = Duration::seconds(i64::from(row.3));
         Task {
             id: Some(row.0 as u32),
             content: row.1,
-            deadline: deadline,
-            duration: duration,
+            deadline,
+            duration,
             importance: row.4 as u32,
         }
     }

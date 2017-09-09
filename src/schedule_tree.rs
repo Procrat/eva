@@ -71,7 +71,9 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
         let end = start + duration;
         return_on_some!(self.try_schedule_trivial_cases(start, end, data));
 
-        self.root.as_mut().unwrap().insert(start, end, data)
+        self.root.as_mut()
+            .expect("Internal error: root could not be taken as mut ref")
+            .insert(start, end, data)
     }
 
     /// Tries to schedule `data` as close as possible before `end` with the given `duration`. It
@@ -99,11 +101,13 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
         let optimal_start = end - duration;
         return_on_some!(self.try_schedule_trivial_cases(optimal_start, end, data));
 
-        return_on_some!(self.root.as_mut().unwrap()
+        return_on_some!(self.root.as_mut()
+                        .expect("Internal error: root could not be taken as mut ref")
                         .insert_before(end, duration, min_start, data));
 
         // As last resort, try to schedule before current scope if min_start allows
-        let scope = self.scope.as_ref().cloned().unwrap();
+        let scope = self.scope.as_ref().cloned()
+            .expect("Internl error: scope could not be taken as ref");
         if min_start.map_or(true, |min_start| min_start <= scope.start - duration) {
             // Schedule on [scope.start - duration, scope.start]
             let start = scope.start - duration;
@@ -111,7 +115,8 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
             let new_node = Node::Leaf { start, end, data };
             self.root = Some(Node::Intermediate {
                                  left: Box::new(new_node),
-                                 right: Box::new(self.root.take().unwrap()),
+                                 right: Box::new(self.root.take()
+                                                 .expect("Internal error: root could not be taken")),
                                  free: scope.start..scope.start,
                              });
             self.scope = Some(start..scope.end);
@@ -146,18 +151,21 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
         let optimal_end = start + duration;
         return_on_some!(self.try_schedule_trivial_cases(start, optimal_end, data));
 
-        return_on_some!(self.root.as_mut().unwrap()
+        return_on_some!(self.root.as_mut()
+                        .expect("Internal error: root could not be taken as mut ref")
                         .insert_after(start, duration, max_end, data));
 
         // As last resort, try to schedule after current scope if max_end allows
-        let scope = self.scope.as_ref().cloned().unwrap();
+        let scope = self.scope.as_ref().cloned()
+            .expect("Internal error: scope could not be taken as ref");
         if max_end.map_or(true, |max_end| scope.end + duration <= max_end) {
             // Schedule on [scope.end, scope.end + duration]
             let start = scope.end;
             let end = scope.end + duration;
             let new_node = Node::Leaf { start, end, data };
             self.root = Some(Node::Intermediate {
-                                 left: Box::new(self.root.take().unwrap()),
+                                 left: Box::new(self.root.take()
+                                                .expect("Internal error: root could not be taken")),
                                  right: Box::new(new_node),
                                  free: scope.end..scope.end,
                              });
@@ -183,9 +191,11 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
             return Some(start)
         }
 
-        let scope = self.scope.as_ref().cloned().unwrap();
+        let scope = self.scope.as_ref().cloned()
+            .expect("Internal error: scope could not be taken as ref");
         if end <= scope.start {
-            let root = self.root.take().unwrap();
+            let root = self.root.take()
+                .expect("Internal error: root could not be taken");
             self.root = Some(Node::Intermediate {
                                  left: Box::new(new_node),
                                  right: Box::new(root),
@@ -194,7 +204,8 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
             self.scope = Some(start..scope.end);
             return Some(start)
         } else if scope.end <= start {
-            let root = self.root.take().unwrap();
+            let root = self.root.take()
+                .expect("Internal error: root could not be taken");
             self.root = Some(Node::Intermediate {
                                  left: Box::new(root),
                                  right: Box::new(new_node),
@@ -246,7 +257,7 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
     fn update_map(&mut self, start: T, data: &'a D) {
         let old_value = self.data_map.insert(data, start);
         if old_value.is_some() {
-            panic!("Internal error: same data is being entered twice.")
+            panic!("Internal error: same data is being entered twice")
         }
     }
 }
@@ -368,7 +379,7 @@ impl<'a, T, D> Node<'a, T, D>
         where D: PartialEq
     {
         match *self {
-            Node::Leaf { .. } => panic!("`unschedule` called on a leaf node"),
+            Node::Leaf { .. } => panic!("Internal error: `unschedule` called on a leaf node"),
             Node::Intermediate { .. } => {
                 if start < self.unchecked_free_ref().start {
                     match *self.unchecked_left_mut() {
@@ -437,7 +448,7 @@ impl<'a, T, D> Node<'a, T, D>
     /// Assume `self` is an intermediate node and return a mutable reference to the left child.
     fn unchecked_left_mut(&mut self) -> &mut Node<'a, T, D> {
         match *self {
-            Node::Leaf { .. } => panic!("`unchecked_left_mut` called on a leaf node"),
+            Node::Leaf { .. } => panic!("Internal error: `unchecked_left_mut` called on a leaf node"),
             Node::Intermediate { ref mut left, .. } => left,
         }
     }
@@ -445,7 +456,7 @@ impl<'a, T, D> Node<'a, T, D>
     /// Assume `self` is an intermediate node and return a mutable reference to the right child.
     fn unchecked_right_mut(&mut self) -> &mut Node<'a, T, D> {
         match *self {
-            Node::Leaf { .. } => panic!("`unchecked_right_mut` called on a leaf node"),
+            Node::Leaf { .. } => panic!("Internal error: `unchecked_right_mut` called on a leaf node"),
             Node::Intermediate { ref mut right, .. } => right,
         }
     }
@@ -453,7 +464,7 @@ impl<'a, T, D> Node<'a, T, D>
     /// Assume `self` is an intermediate node and return the left child.
     fn unchecked_left(self) -> Node<'a, T, D> {
         match self {
-            Node::Leaf { .. } => panic!("`unchecked_left` called on a leaf node"),
+            Node::Leaf { .. } => panic!("Internal error: `unchecked_left` called on a leaf node"),
             Node::Intermediate { box left, .. } => left,
         }
     }
@@ -461,7 +472,7 @@ impl<'a, T, D> Node<'a, T, D>
     /// Assume `self` is an intermediate node and return the right child.
     fn unchecked_right(self) -> Node<'a, T, D> {
         match self {
-            Node::Leaf { .. } => panic!("`unchecked_right` called on a leaf node"),
+            Node::Leaf { .. } => panic!("Internal error: `unchecked_right` called on a leaf node"),
             Node::Intermediate { box right, .. } => right,
         }
     }
@@ -469,7 +480,7 @@ impl<'a, T, D> Node<'a, T, D>
     /// Assume `self` is an intermediate node and return a reference to the free range.
     fn unchecked_free_ref(&self) -> &Range<T> {
         match *self {
-            Node::Leaf { .. } => panic!("`unchecked_free_ref` called on a leaf node"),
+            Node::Leaf { .. } => panic!("Internal error: `unchecked_free_ref` called on a leaf node"),
             Node::Intermediate { ref free, .. } => free,
         }
     }
@@ -477,7 +488,7 @@ impl<'a, T, D> Node<'a, T, D>
     /// Assume `self` is an intermediate node and return a mutable reference to the free range.
     fn unchecked_free_mut(&mut self) -> &mut Range<T> {
         match *self {
-            Node::Leaf { .. } => panic!("`unchecked_free_mut` called on a leaf node"),
+            Node::Leaf { .. } => panic!("Internal error: `unchecked_free_mut` called on a leaf node"),
             Node::Intermediate { ref mut free, .. } => free,
         }
     }

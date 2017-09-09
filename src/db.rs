@@ -14,6 +14,7 @@ use diesel::sqlite::{Sqlite, SqliteConnection};
 use diesel::types::{FromSql, HasSqlType, Integer, Text};
 
 use super::Task;
+use errors::*;
 
 
 table! {
@@ -29,20 +30,19 @@ table! {
 embed_migrations!();
 
 
-pub fn make_connection(settings: &config::Config) -> SqliteConnection {
+pub fn make_connection(settings: &config::Config) -> Result<SqliteConnection> {
     let database_url = settings.get_str("database")
-        .unwrap_or_else(|err| {
-            panic!(format!("An error occured while trying to read database path: {}", err))
-        });
+        .chain_err(|| ::configuration::errors::ErrorKind::Read("database path".to_owned()))?;
     make_connection_with(&database_url)
 }
 
-fn make_connection_with(database_url: &str) -> SqliteConnection {
+fn make_connection_with(database_url: &str) -> Result<SqliteConnection> {
     let connection = SqliteConnection::establish(database_url)
-        .expect(&format!("Error connecting to {}", database_url));
-    // TODO run instead of run_with_output + unwrap
-    embedded_migrations::run_with_output(&connection, &mut io::stdout()).unwrap();
-    connection
+        .chain_err(|| ErrorKind::Database(format!("while trying to connect to {}", database_url)))?;
+    // TODO run instead of run_with_output
+    embedded_migrations::run_with_output(&connection, &mut io::stderr())
+        .chain_err(|| ErrorKind::Database("while running migrations".to_owned()))?;
+    Ok(connection)
 }
 
 
@@ -96,7 +96,7 @@ impl<'a> Identifiable for &'a Task {
     type Id = i32;
 
     fn id(self) -> Self::Id {
-        self.id.expect("internal error: id must not be None.") as i32
+        self.id.expect("Internal error: task id must not be None") as i32
     }
 }
 
@@ -139,7 +139,7 @@ mod tests {
     fn test_insert_query_and_delete_single_task() {
         use self::tasks::dsl::tasks;
 
-        let connection = make_connection_with(":memory:");
+        let connection = make_connection_with(":memory:").unwrap();
         let new_task = test_task();
 
         diesel::insert(&new_task)
@@ -164,7 +164,7 @@ mod tests {
     fn test_insert_update_query_single_task() {
         use self::tasks::dsl::tasks;
 
-        let connection = make_connection_with(":memory:");
+        let connection = make_connection_with(":memory:").unwrap();
         let new_task = test_task();
         diesel::insert(&new_task)
             .into(tasks)

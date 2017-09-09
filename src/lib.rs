@@ -1,14 +1,16 @@
 #![feature(box_patterns)]
 
 extern crate app_dirs;
-#[macro_use]
-extern crate derive_new;
 extern crate chrono;
 extern crate config;
+#[macro_use]
+extern crate derive_new;
 #[macro_use]
 extern crate diesel;
 #[macro_use]
 extern crate diesel_codegen;
+#[macro_use]
+extern crate error_chain;
 extern crate itertools;
 #[macro_use]
 extern crate lazy_static;
@@ -18,7 +20,6 @@ extern crate take_mut;
 #[cfg(test)]
 #[macro_use]
 extern crate assert_matches;
-
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -30,6 +31,9 @@ use itertools::Itertools;
 
 use schedule_tree::ScheduleTree;
 
+pub use errors::{Error, ErrorKind, Result, ResultExt};
+pub use config::Config;
+
 #[macro_use]
 mod util;
 
@@ -37,19 +41,54 @@ mod configuration;
 mod db;
 mod schedule_tree;
 
-lazy_static! {
-    static ref SCHEDULE_DELAY: Duration = Duration::minutes(1);
-    pub static ref CONFIG: config::Config = configuration::read();
+#[allow(unused_doc_comment)]
+mod errors {
+    use configuration;
+
+    error_chain! {
+        links {
+            Configuration(configuration::errors::Error, configuration::errors::ErrorKind);
+        }
+        errors {
+            Parse(what: String, how_it_should_be: String) {
+                description("parse error")
+                display("I could not parse the {}. {}", what, how_it_should_be)
+            }
+            Schedule(why: String) {
+                description("scheduling error")
+                display("I could not schedule your tasks {}", why)
+            }
+            Database(when: String) {
+                description("database error")
+                display("A database error occurred {}", when)
+            }
+            Internal(more_info: String) {
+                description("internal error")
+                display("An internal error occurred (This shouldn't happen.): {}", more_info)
+            }
+        }
+    }
 }
 
 
-pub fn add(content: &str, deadline: &str, duration: &str, importance: u32) {
+lazy_static! {
+    static ref SCHEDULE_DELAY: Duration = Duration::minutes(1);
+}
+
+
+pub fn read_configuration() -> Result<config::Config> {
+    let config = configuration::read()?;
+    Ok(config)
+}
+
+
+pub fn add(content: &str, deadline: &str, duration: &str, importance: u32) -> Result<()> {
     use db::tasks::dsl::tasks;
 
-    let connection = db::make_connection(&CONFIG);
+    let connection = db::make_connection(&read_configuration()?)?;
 
-    let deadline = parse_datetime(deadline);
-    let duration = parse_duration(duration);
+    let deadline = parse_datetime(deadline)?;
+    let duration = parse_duration(duration)?;
     let new_task = Task {
         id: None,
         content: content.to_string(),
@@ -61,80 +100,88 @@ pub fn add(content: &str, deadline: &str, duration: &str, importance: u32) {
     diesel::insert(&new_task)
         .into(tasks)
         .execute(&connection)
-        .expect("Error saving task.");
+        .chain_err(|| ErrorKind::Database("while trying to add a task".to_owned()))?;
+
+    Ok(())
 }
 
-pub fn remove(id: u32) {
+pub fn remove(id: u32) -> Result<()> {
     use db::tasks::dsl::tasks;
 
-    let connection = db::make_connection(&CONFIG);
+    let connection = db::make_connection(&read_configuration()?)?;
 
     let amount_deleted =
         diesel::delete(tasks.find(id as i32))
         .execute(&connection)
-        .expect("Error removing task.");
+        .chain_err(|| ErrorKind::Database("while trying to remove a task".to_owned()))?;
 
     if amount_deleted == 0 {
-        panic!("Could not find task with id {}", id)
+        bail!(ErrorKind::Database(format!("while trying to find the task with id {}", id)));
     } else if amount_deleted > 1 {
-        panic!("Internal error (this should not happen): multiple tasks got deleted.")
+        bail!(ErrorKind::Internal("multiple tasks got deleted".to_owned()));
     }
+
+    Ok(())
 }
 
-pub fn set(field_name: &str, id: u32, value: &str) {
+pub fn set(field_name: &str, id: u32, value: &str) -> Result<()> {
     assert!(["content", "deadline", "duration", "importance"].contains(&field_name));
 
     use db::tasks::dsl::tasks;
 
-    let connection = db::make_connection(&CONFIG);
+    let connection = db::make_connection(&read_configuration()?)?;
 
     let mut task: Task = tasks.find(id as i32)
         .first(&connection)
-        .expect("Error retrieving task");
+        .chain_err(|| ErrorKind::Database("while trying to retrieve a task".to_owned()))?;
 
     match field_name {
         "content" => task.content = value.to_string(),
-        "deadline" => task.deadline = parse_datetime(value),
-        "duration" => task.duration = parse_duration(value),
-        "importance" => task.importance = value.parse()
-            .expect("Please supply a valid integer"),
+        "deadline" => task.deadline = parse_datetime(value)?,
+        "duration" => task.duration = parse_duration(value)?,
+        "importance" => task.importance = parse_importance(value)?,
         _ => unreachable!(),
     }
 
     let amount_updated = diesel::update(&task)
         .set(task)
         .execute(&connection)
-        .expect("Error updating task.");
+        .chain_err(|| ErrorKind::Database("while trying to update a task".to_owned()))?;
 
     if amount_updated == 0 {
-        panic!("Could not update task.")
+        bail!(ErrorKind::Database("while trying to update a task".to_owned()));
     } else if amount_updated > 1 {
-        panic!("Internal error (this should not happen): multiple tasks got deleted.")
+        bail!(ErrorKind::Internal("multiple tasks got deleted".to_owned()));
     }
+
+    Ok(())
 }
 
-pub fn print_schedule(strategy: &str) {
+pub fn print_schedule(strategy: &str) -> Result<()> {
     assert!(["importance", "urgency"].contains(&strategy));
 
     use db::tasks::dsl::tasks;
 
-    let connection = db::make_connection(&CONFIG);
+    let connection = db::make_connection(&read_configuration()?)?;
 
     let tasks_ = tasks
         .load::<Task>(&connection)
-        .expect("Error retrieving tasks.");
+        .chain_err(|| ErrorKind::Database("while trying to retrieve tasks".to_owned()))?;
 
     println!("Tasks:");
     for task in &tasks_ {
         println!("  {}", task);
     }
+    println!();
 
     let schedule = match strategy {
         "importance" => Schedule::schedule_according_to_importance(&tasks_),
         "urgency" => Schedule::schedule_according_to_myrjam(&tasks_),
-        _ => panic!(format!("There is no scheduling strategy called \"{}\".", strategy)),
-    };
-    println!("\n{}", schedule);
+        _ => unreachable!(),
+    }?;
+    println!("{}", schedule);
+
+    Ok(())
 }
 
 
@@ -168,7 +215,9 @@ impl Hash for Task {
         self.id.hash(state);
         self.content.hash(state);
         self.deadline.hash(state);
-        self.duration.to_std().unwrap().hash(state);
+        self.duration.to_std()
+            .expect(&format!("Internal error: duration of {} was negative", self))
+            .hash(state);
         self.importance.hash(state);
     }
 }
@@ -193,7 +242,7 @@ impl<'a> Schedule<'a> {
     ///     tasks: iterable of tasks to schedule
     /// Returns an instance of Schedule which contains all tasks, each bound to certain date and
     /// time.
-    pub fn schedule<'b: 'a, I>(tasks: I) -> Schedule<'a>
+    pub fn schedule<'b: 'a, I>(tasks: I) -> Result<Schedule<'a>>
         where I: IntoIterator<Item=&'b Task>
     {
         Schedule::schedule_according_to_importance(tasks)
@@ -209,7 +258,7 @@ impl<'a> Schedule<'a> {
     ///
     /// This algorithm has a terrible performance at the moment and it doesn't work right when the
     /// lengths of the tasks aren't about the same, but it will do for now.
-    fn schedule_according_to_importance<'b: 'a, I>(tasks: I) -> Schedule<'a>
+    fn schedule_according_to_importance<'b: 'a, I>(tasks: I) -> Result<Schedule<'a>>
         where I: IntoIterator<Item=&'b Task>
     {
         let mut tree = ScheduleTree::new();
@@ -219,13 +268,17 @@ impl<'a> Schedule<'a> {
         let mut tasks: Vec<&Task> = tasks.into_iter().collect::<Vec<_>>();
         tasks.sort_by_key(|task| (task.importance, now.signed_duration_since(task.deadline)));
         for task in &tasks {
-            if task.deadline <= now {
-                // TODO Figure out what should be done in this case
-                panic!("Aaargh! You missed the deadline of task {}.", task)
+            if task.deadline <= now + task.duration {
+                bail!(ErrorKind::Schedule(format!(
+                    "because you {} the deadline of {}.\nYou might want to postpone this task \
+                    or remove it if it's no longer relevant",
+                    if task.deadline <= now { "missed" } else { "will miss" },
+                    task)));
             }
             if ! tree.schedule_close_before(task.deadline, task.duration, Some(now), *task) {
-                // TODO Figure out what should be done in this case
-                panic!("Out of time! Not all tasks could be scheduled.")
+                bail!(ErrorKind::Schedule(
+                    "because you don't have enought time to do everything.\nYou might want to \
+                    decide not to do some things or relax their deadlines".to_owned()));
             }
         }
         // Next, shift the most important tasks towards today, and so on, filling up the gaps.
@@ -235,19 +288,21 @@ impl<'a> Schedule<'a> {
             changed = false;
             for task in tasks.iter().rev() {
                 let scheduled_entry = tree.unschedule(task)
-                    .expect("Internal error: this shouldn't happen.");
+                    .ok_or_else(|| ErrorKind::Internal(
+                            "I couldn't unschedule a task".to_owned()))?;
                 if ! tree.schedule_close_after(now, task.duration, Some(scheduled_entry.end), *task) {
-                    panic!("Internal error: this shouldn't happen.")
+                    bail!(ErrorKind::Internal("I couldn't reschedule a task".to_owned()));
                 }
                 let new_start = tree.when_scheduled(task)
-                    .expect("Internal error: this shouldn't happen");
+                    .ok_or_else(|| ErrorKind::Internal(
+                            "I couldn't find a task that was just scheduled".to_owned()))?;
                 if scheduled_entry.start != *new_start {
                     changed = true;
                     break;
                 }
             }
         }
-        Schedule::tree_to_schedule(&tree)
+        Ok(Schedule::tree_to_schedule(&tree))
     }
 
     /// Schedules `tasks` according to deadline first and then according to importance.
@@ -260,7 +315,7 @@ impl<'a> Schedule<'a> {
     /// it this way, is that it is highly robust against contingencies like falling sick. A
     /// disadvantage is that it gives more priority to urgent but less important tasks than to
     /// important but less urgent tasks.
-    fn schedule_according_to_myrjam<'b: 'a, I>(tasks: I) -> Schedule<'a>
+    fn schedule_according_to_myrjam<'b: 'a, I>(tasks: I) -> Result<Schedule<'a>>
         where I: IntoIterator<Item=&'b Task>
     {
         let mut tree = ScheduleTree::new();
@@ -270,25 +325,30 @@ impl<'a> Schedule<'a> {
         let mut tasks: Vec<&Task> = tasks.into_iter().collect::<Vec<_>>();
         tasks.sort_by_key(|task| task.importance);
         for task in &tasks {
-            if task.deadline <= now {
-                // TODO Figure out what should be done in this case
-                panic!("Aaargh! You missed the deadline of task {}.", task)
+            if task.deadline <= now + task.duration {
+                bail!(ErrorKind::Schedule(format!(
+                    "because you {} the deadline of {}.\nYou might want to postpone this task \
+                    or remove it if it's no longer relevant",
+                    if task.deadline <= now { "missed" } else { "will miss" },
+                    task)));
             }
+            eprintln!("Calling schedule_close_before w/ {} now={}", task, now);
             if ! tree.schedule_close_before(task.deadline, task.duration, Some(now), *task) {
-                // TODO Figure out what should be done in this case
-                panic!("Out of time! Not all tasks could be scheduled.")
+                bail!(ErrorKind::Schedule(
+                    "because you don't have enought time to do everything.\nYou might want to \
+                    decide not to do some things or relax their deadlines".to_owned()));
             }
         }
         // Next, shift the all tasks towards the present, filling up the gaps.
         for entry in tree.iter().collect::<Vec<_>>() {
             let task = entry.data;
             let scheduled_entry = tree.unschedule(task)
-                .expect("Internal error: this shouldn't happen.");
+                .ok_or_else(|| ErrorKind::Internal("I couldn't unschedule a task".to_owned()))?;
             if ! tree.schedule_close_after(now, task.duration, Some(scheduled_entry.end), task) {
-                panic!("Internal error: this shouldn't happen.")
+                bail!(ErrorKind::Internal("I couldn't reschedule a task".to_owned()));
             }
         }
-        Schedule::tree_to_schedule(&tree)
+        Ok(Schedule::tree_to_schedule(&tree))
     }
 
     fn tree_to_schedule(tree: &ScheduleTree<'a, DateTime<Local>, Task>) -> Schedule<'a> {
@@ -343,15 +403,29 @@ fn format_duration(duration: Duration) -> String {
     }
 }
 
-fn parse_datetime(datetime: &str) -> DateTime<Local> {
+fn parse_datetime(datetime: &str) -> Result<DateTime<Local>> {
     Local.datetime_from_str(datetime, "%-d %b %Y %-H:%M")
-        .expect("Could not parse deadline. Please provide something like '4 Jul 2017 6:05'.")
+        .chain_err(|| {
+            ErrorKind::Parse("deadline".to_owned(),
+                             "Please provide something like '4 Jul 2017 6:05'".to_owned())
+        })
 }
 
-fn parse_duration(duration_hours: &str) -> Duration {
+fn parse_importance(importance_str: &str) -> Result<u32> {
+    importance_str.parse()
+        .chain_err(|| ErrorKind::Parse("importance".to_owned(),
+                                       "Please supply a valid integer".to_owned()))
+}
+
+fn parse_duration(duration_hours: &str) -> Result<Duration> {
     let hours: f64 = duration_hours.parse()
-        .expect("Please supply a valid real number as duration.");
-    Duration::minutes((60.0 * hours) as i64)
+        .chain_err(|| ErrorKind::Parse("duration".to_owned(),
+                                       "Please supply a valid, real number".to_owned()))?;
+    if hours <= 0.0 {
+        bail!(ErrorKind::Parse("duration".to_owned(),
+                               "Please supply a positive number".to_owned()));
+    }
+    Ok(Duration::minutes((60.0 * hours) as i64))
 }
 
 
@@ -369,7 +443,7 @@ mod tests {
                     #[test]
                     fn all_tasks_are_scheduled() {
                         for tasks in [taskset_of_myrjam(), taskset_just_in_time()].iter() {
-                            let schedule = $schedule_fn(tasks);
+                            let schedule = $schedule_fn(tasks).unwrap();
                             assert_eq!(tasks.len(), schedule.0.len());
                             for scheduled_task in schedule.0.iter() {
                                 assert!(tasks.contains(scheduled_task.task));
@@ -383,7 +457,7 @@ mod tests {
                     #[test]
                     fn tasks_are_in_scheduled_in_time() {
                         for tasks in [taskset_of_myrjam(), taskset_just_in_time()].iter() {
-                            let schedule = $schedule_fn(tasks);
+                            let schedule = $schedule_fn(tasks).unwrap();
                             for scheduled_task in schedule.0.iter() {
                                 assert!(scheduled_task.when <= scheduled_task.task.deadline);
                             }
@@ -393,7 +467,7 @@ mod tests {
                     #[test]
                     fn schedule_just_in_time() {
                         let tasks = taskset_just_in_time();
-                        let schedule = $schedule_fn(&tasks);
+                        let schedule = $schedule_fn(&tasks).unwrap();
                         assert_eq!(*schedule.0[0].task, tasks[0]);
                         assert_eq!(*schedule.0[1].task, tasks[1]);
                         assert!(are_approx_equal(schedule.0[0].when,
@@ -421,7 +495,7 @@ mod tests {
                         }];
                         // Normal scheduling
                         {
-                            let schedule = $schedule_fn(&tasks);
+                            let schedule = $schedule_fn(&tasks).unwrap();
                             assert_eq!(*schedule.0[0].task, tasks[0]);
                             assert_eq!(*schedule.0[1].task, tasks[1]);
                         }
@@ -431,14 +505,14 @@ mod tests {
                         tasks[0].importance = 5;
                         tasks[1].importance = 6;
                         {
-                            let schedule = $schedule_fn(&tasks);
+                            let schedule = $schedule_fn(&tasks).unwrap();
                             assert_eq!(*schedule.0[0].task, tasks[0]);
                             assert_eq!(*schedule.0[1].task, tasks[1]);
                         }
 
                         // Leveling the deadlines should make the more important task be scheduled first again.
                         tasks[0].deadline = Local::now() + Duration::hours(3);
-                        let schedule = $schedule_fn(&tasks);
+                        let schedule = $schedule_fn(&tasks).unwrap();
                         assert_eq!(*schedule.0[0].task, tasks[1]);
                         assert_eq!(*schedule.0[1].task, tasks[0]);
                     }
@@ -446,22 +520,22 @@ mod tests {
                     #[test]
                     fn no_schedule() {
                         let tasks = [];
-                        let schedule = $schedule_fn(&tasks);
+                        let schedule = $schedule_fn(&tasks).unwrap();
                         assert!(schedule.0.is_empty());
                     }
 
                     #[test]
-                    #[should_panic]
                     fn missed_deadline() {
                         let tasks = taskset_with_missed_deadline();
-                        $schedule_fn(&tasks);
+                        assert_matches!($schedule_fn(&tasks),
+                                        Err(Error(ErrorKind::Schedule(_), _)));
                     }
 
                     #[test]
-                    #[should_panic]
                     fn out_of_time() {
                         let tasks = taskset_impossible();
-                        $schedule_fn(&tasks);
+                        assert_matches!($schedule_fn(&tasks),
+                                        Err(Error(ErrorKind::Schedule(_), _)));
                     }
                 }
              )*
@@ -545,7 +619,7 @@ mod tests {
     #[test]
     fn schedule_for_myrjam() {
         let tasks = taskset_of_myrjam();
-        let schedule = Schedule::schedule_according_to_myrjam(&tasks);
+        let schedule = Schedule::schedule_according_to_myrjam(&tasks).unwrap();
         let mut expected_when = Local::now() + *SCHEDULE_DELAY;
         // 1. Make onion soup, 1h, 3, in 2 hours
         assert_eq!(*schedule.0[0].task, tasks[1]);
@@ -575,7 +649,7 @@ mod tests {
     #[test]
     fn schedule_myrjams_schedule_by_importance() {
         let tasks = taskset_of_myrjam();
-        let schedule = Schedule::schedule_according_to_importance(&tasks);
+        let schedule = Schedule::schedule_according_to_importance(&tasks).unwrap();
         let mut expected_when = Local::now() + *SCHEDULE_DELAY;
         // 5. Make dentist appointment, 10m, 5, in 7 days
         assert_eq!(*schedule.0[0].task, tasks[5]);
@@ -673,7 +747,7 @@ mod tests {
     #[test]
     fn schedule_gandalfs_schedule_by_importance() {
         let tasks = taskset_of_gandalf();
-        let schedule = Schedule::schedule_according_to_importance(&tasks);
+        let schedule = Schedule::schedule_according_to_importance(&tasks).unwrap();
         let mut expected_when = Local::now() + *SCHEDULE_DELAY;
         // 7. Prepare epic-sounding one-liners
         assert_eq!(*schedule.0[0].task, tasks[7]);
@@ -710,46 +784,6 @@ mod tests {
         // 4. Get riders of Rohan to help Gondor
         assert_eq!(*schedule.0[8].task, tasks[4]);
         assert!(are_approx_equal(schedule.0[8].when, expected_when));
-    }
-
-    #[test]
-    fn schedule_sets_of_two() {
-        let mut tasks = vec![Task {
-            id: None,
-            content: "find meaning to life".to_string(),
-            deadline: Local::now() + Duration::hours(1),
-            duration: Duration::hours(1) - *SCHEDULE_DELAY * 2,
-            importance: 6,
-        },
-        Task {
-            id: None,
-            content: "stop giving a fuck".to_string(),
-            deadline: Local::now() + Duration::hours(3),
-            duration: Duration::hours(2) - *SCHEDULE_DELAY * 2,
-            importance: 5,
-        }];
-        // Normal scheduling
-        {
-            let schedule = Schedule::schedule_according_to_importance(&tasks);
-            assert_eq!(*schedule.0[0].task, tasks[0]);
-            assert_eq!(*schedule.0[1].task, tasks[1]);
-        }
-
-        // Reversing the importance should maintain the scheduled order, because it's the only way
-        // to meet the deadlines.
-        tasks[0].importance = 5;
-        tasks[1].importance = 6;
-        {
-            let schedule = Schedule::schedule_according_to_importance(&tasks);
-            assert_eq!(*schedule.0[0].task, tasks[0]);
-            assert_eq!(*schedule.0[1].task, tasks[1]);
-        }
-
-        // Leveling the deadlines should make the more important task be scheduled first again.
-        tasks[0].deadline = Local::now() + Duration::hours(3);
-        let schedule = Schedule::schedule_according_to_importance(&tasks);
-        assert_eq!(*schedule.0[0].task, tasks[1]);
-        assert_eq!(*schedule.0[1].task, tasks[0]);
     }
 
     fn taskset_with_missed_deadline() -> Vec<Task> {

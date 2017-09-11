@@ -196,30 +196,27 @@ database = "C:\\Users\\<username>\\AppData\\Roaming\\eva\\db.sqlite"
 
 ### Next goals
 
+- Web interface (based on [Procrat/rust-asmjs-fiddlings](https://github.com/Procrat/rust-asmjs-fiddlings))
 - CalDAV / Google Calendar integration
   - Optional reminders
 - Life organising scheme (values → life goals → projects → tasks)
 
-### Unprioritised goals
+### Possible future goals
 
-- Bulk-edit tasks
 - Integration with desktop environment
 - Time tracking + Pomodoro
-- "Forced" reflection
-- Web interface
+- Reflection (cfr. GTD)
 - Interactive terminal UI (possibly reusing [Procrat/eva-deprecated](https://github.com/Procrat/eva-deprecated), possibly with `ncurses`)
 - Scratchpad
 - Laudatory diary
 - Frozen tasks
-- API/hooks for easy extension
-- Integration with TaskWarrior (if at all possible)
 
 
 ## Acknowledgements
 
 Many thanks go out to [Personal Productivity
-@StackExchange](http://productivity.stackexchange.com), [zen
-habits](http://zenhabits.net) and [GTD](http://gettingthingsdone.com) for
-originally inspiring me! I also wouldn't have gotten this far without the
-interesting discussions around scheduling algorithms with
-[Myrjam](https://twitter.com/Myrjamvdv).
+@StackExchange](http://productivity.stackexchange.com), [Mark
+Manson](https://markmanson.net), [zen habits](http://zenhabits.net) and
+[GTD](http://gettingthingsdone.com) for originally inspiring me! I also wouldn't
+have gotten this far without the interesting discussions around scheduling
+algorithms with [Myrjam](https://twitter.com/Myrjamvdv).

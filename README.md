@@ -31,6 +31,7 @@ the frog, etc.
 3. **Automatic scheduling** should be left to machines since humans are better at
    deciding importance, deadlines and estimated duration of tasks then at
    actually scheduling all the things in their lives.
+4. Your **mental health** is more important than your productivity.
 
 
 ## Installation

@@ -1,8 +1,6 @@
 #![feature(box_patterns)]
 
-extern crate app_dirs;
 extern crate chrono;
-extern crate config;
 #[macro_use]
 extern crate derive_new;
 #[macro_use]
@@ -14,7 +12,6 @@ extern crate error_chain;
 extern crate itertools;
 #[macro_use]
 extern crate lazy_static;
-extern crate shellexpand;
 extern crate take_mut;
 
 #[cfg(test)]
@@ -29,26 +26,21 @@ use chrono::Duration;
 use diesel::prelude::*;
 use itertools::Itertools;
 
+use configuration::Configuration;
 use schedule_tree::ScheduleTree;
 
 pub use errors::{Error, ErrorKind, Result, ResultExt};
-pub use config::Config;
 
 #[macro_use]
 mod util;
 
-mod configuration;
+pub mod configuration;
 mod db;
 mod schedule_tree;
 
 #[allow(unused_doc_comment)]
 mod errors {
-    use configuration;
-
     error_chain! {
-        links {
-            Configuration(configuration::errors::Error, configuration::errors::ErrorKind);
-        }
         errors {
             Parse(what: String, how_it_should_be: String) {
                 description("parse error")
@@ -76,16 +68,16 @@ lazy_static! {
 }
 
 
-pub fn read_configuration() -> Result<config::Config> {
-    let config = configuration::read()?;
-    Ok(config)
-}
-
-
-pub fn add(content: &str, deadline: &str, duration: &str, importance: u32) -> Result<()> {
+pub fn add(configuration: &Configuration,
+           content: &str,
+           deadline: &str,
+           duration: &str,
+           importance: u32)
+    -> Result<()>
+{
     use db::tasks::dsl::tasks;
 
-    let connection = db::make_connection(&read_configuration()?)?;
+    let connection = db::make_connection(configuration)?;
 
     let deadline = parse_datetime(deadline)?;
     let duration = parse_duration(duration)?;
@@ -105,10 +97,10 @@ pub fn add(content: &str, deadline: &str, duration: &str, importance: u32) -> Re
     Ok(())
 }
 
-pub fn remove(id: u32) -> Result<()> {
+pub fn remove(configuration: &Configuration, id: u32) -> Result<()> {
     use db::tasks::dsl::tasks;
 
-    let connection = db::make_connection(&read_configuration()?)?;
+    let connection = db::make_connection(configuration)?;
 
     let amount_deleted =
         diesel::delete(tasks.find(id as i32))
@@ -124,12 +116,12 @@ pub fn remove(id: u32) -> Result<()> {
     Ok(())
 }
 
-pub fn set(field_name: &str, id: u32, value: &str) -> Result<()> {
+pub fn set(configuration: &Configuration, field_name: &str, id: u32, value: &str) -> Result<()> {
     assert!(["content", "deadline", "duration", "importance"].contains(&field_name));
 
     use db::tasks::dsl::tasks;
 
-    let connection = db::make_connection(&read_configuration()?)?;
+    let connection = db::make_connection(configuration)?;
 
     let mut task: Task = tasks.find(id as i32)
         .first(&connection)
@@ -157,12 +149,12 @@ pub fn set(field_name: &str, id: u32, value: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn print_schedule(strategy: &str) -> Result<()> {
+pub fn print_schedule(configuration: &Configuration, strategy: &str) -> Result<()> {
     assert!(["importance", "urgency"].contains(&strategy));
 
     use db::tasks::dsl::tasks;
 
-    let connection = db::make_connection(&read_configuration()?)?;
+    let connection = db::make_connection(configuration)?;
 
     let tasks_ = tasks
         .load::<Task>(&connection)

@@ -190,14 +190,16 @@ database = "C:\\Users\\<username>\\AppData\\Roaming\\eva\\db.sqlite"
 - [x] Minimal task management interface
 - [x] Automatic scheduling
 - [x] User configuration
+- [x] Abstract configuration interface
 - [ ] Manual scheduling of fixed events
 - [ ] Recurring events
 - [ ] Time segmentation (e.g. sleep, working hours, morning rituals)
-- [ ] Task dependencies
+- [ ] Abstract data interface
 
 ### Next goals
 
 - Web interface (based on [Procrat/rust-asmjs-fiddlings](https://github.com/Procrat/rust-asmjs-fiddlings))
+- Task dependencies
 - CalDAV / Google Calendar integration
   - Optional reminders
 - Life organising scheme (values → life goals → projects → tasks)

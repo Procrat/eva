@@ -1,12 +1,47 @@
+extern crate app_dirs;
 extern crate clap;
+extern crate config;
 extern crate eva;
+#[macro_use]
+extern crate error_chain;
+extern crate shellexpand;
 
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
+use eva::configuration::Configuration;
 
-use eva::{Error, Result, ResultExt};
+use errors::*;
+
+mod configuration;
+
+#[allow(unused_doc_comment)]
+mod errors {
+    use configuration;
+    use eva;
+
+    error_chain! {
+        links {
+            Configuration(configuration::Error, configuration::ErrorKind);
+        }
+        foreign_links {
+            EvaCore(eva::Error);
+        }
+    }
+}
 
 
-fn cli<'a, 'b>(default_scheduling_strategy: &'a str) -> App<'a, 'b> {
+fn main() {
+    if let Err(ref error) = run() {
+        handle_error(error);
+    }
+}
+
+fn run() -> Result<()> {
+    let configuration = configuration::read()?;
+    let matches = cli(&configuration).get_matches();
+    dispatch(&matches, &configuration)
+}
+
+fn cli<'a, 'b>(configuration: &Configuration) -> App<'a, 'b> {
     let add = SubCommand::with_name("add")
         .about("Adds a task")
         .arg(Arg::with_name("content").required(true)
@@ -34,7 +69,7 @@ fn cli<'a, 'b>(default_scheduling_strategy: &'a str) -> App<'a, 'b> {
              .long("strategy")
              .takes_value(true)
              .possible_values(&["importance", "urgency"])
-             .default_value(default_scheduling_strategy));
+             .default_value(configuration.scheduling_strategy.as_str()));
 
     App::new("eva")
         .version(env!("CARGO_PKG_VERSION"))
@@ -46,15 +81,7 @@ fn cli<'a, 'b>(default_scheduling_strategy: &'a str) -> App<'a, 'b> {
         .subcommand(schedule)
 }
 
-fn run() -> Result<()> {
-    let config = eva::read_configuration()?;
-    let default_scheduling_strategy = config.get_str("scheduling_strategy")
-        .chain_err(|| "An error occurred while reading the default strategy".to_owned())?;
-    let matches = cli(&default_scheduling_strategy).get_matches();
-    dispatch(&matches)
-}
-
-fn dispatch(inputs: &ArgMatches) -> Result<()> {
+fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
     match inputs.subcommand() {
         ("add", Some(submatches)) => {
             let content = submatches.value_of("content").unwrap();
@@ -63,13 +90,13 @@ fn dispatch(inputs: &ArgMatches) -> Result<()> {
             let importance = submatches.value_of("importance").unwrap();
             let importance: u32 = try!(importance.parse()
                 .chain_err(|| "Please supply a valid integer as importance factor."));
-            eva::add(content, deadline, duration, importance)
+            Ok(eva::add(configuration, content, deadline, duration, importance)?)
         },
         ("rm", Some(submatches)) => {
             let id = submatches.value_of("task-id").unwrap();
             let id: u32 = id.parse()
                 .chain_err(|| "Please supply a valid integer as id.")?;
-            eva::remove(id)
+            Ok(eva::remove(configuration, id)?)
         },
         ("set", Some(submatches)) => {
             let field = submatches.value_of("property").unwrap();
@@ -77,11 +104,11 @@ fn dispatch(inputs: &ArgMatches) -> Result<()> {
             let value = submatches.value_of("value").unwrap();
             let id: u32 = id.parse()
                 .chain_err(|| "Please supply a valid integer as id.")?;
-            eva::set(field, id, value)
+            Ok(eva::set(configuration, field, id, value)?)
         }
         ("schedule", Some(submatches)) => {
             let strategy = submatches.value_of("strategy").unwrap();
-            eva::print_schedule(strategy)
+            Ok(eva::print_schedule(configuration, strategy)?)
         },
         _ => unreachable!(),
     }
@@ -105,10 +132,4 @@ fn handle_error(error: &Error) {
     }
 
     ::std::process::exit(1);
-}
-
-fn main() {
-    if let Err(ref error) = run() {
-        handle_error(error);
-    }
 }

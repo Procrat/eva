@@ -64,11 +64,11 @@ mod errors {
 
 #[derive(Debug, Eq, new, Clone)]
 pub struct Task {
-    id: Option<u32>,
-    content: String,
-    deadline: DateTime<Local>,
-    duration: Duration,
-    importance: u32,
+    pub id: Option<u32>,
+    pub content: String,
+    pub deadline: DateTime<Local>,
+    pub duration: Duration,
+    pub importance: u32,
 }
 
 impl PartialEq for Task {
@@ -179,6 +179,15 @@ pub fn set(configuration: &Configuration, field_name: &str, id: u32, value: &str
     }
 
     Ok(())
+}
+
+pub fn list_tasks(configuration: &Configuration) -> Result<Vec<Task>> {
+    use db::tasks::dsl::tasks;
+
+    let connection = db::make_connection(configuration)?;
+
+    Ok(tasks.load::<Task>(&connection)
+        .chain_err(|| ErrorKind::Database("while trying to retrieve tasks".to_owned()))?)
 }
 
 pub fn print_schedule(configuration: &Configuration, strategy: &str) -> Result<()> {

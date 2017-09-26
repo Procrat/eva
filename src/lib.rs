@@ -25,9 +25,9 @@ use chrono::Duration;
 use diesel::prelude::*;
 
 use configuration::Configuration;
-use scheduling::Schedule;
 
 pub use errors::{Error, ErrorKind, Result, ResultExt};
+pub use scheduling::{Schedule, ScheduledTask};
 
 #[macro_use]
 mod util;
@@ -190,31 +190,23 @@ pub fn list_tasks(configuration: &Configuration) -> Result<Vec<Task>> {
         .chain_err(|| ErrorKind::Database("while trying to retrieve tasks".to_owned()))?)
 }
 
-pub fn print_schedule(configuration: &Configuration, strategy: &str) -> Result<()> {
+pub fn schedule(configuration: &Configuration, strategy: &str) -> Result<Schedule> {
     assert!(["importance", "urgency"].contains(&strategy));
 
     use db::tasks::dsl::tasks;
 
     let connection = db::make_connection(configuration)?;
 
-    let tasks_ = tasks
-        .load::<Task>(&connection)
+    let tasks_ = tasks.load::<Task>(&connection)
         .chain_err(|| ErrorKind::Database("while trying to retrieve tasks".to_owned()))?;
 
-    println!("Tasks:");
-    for task in &tasks_ {
-        println!("  {}", task);
-    }
-    println!();
-
     let schedule = match strategy {
-        "importance" => Schedule::schedule_according_to_importance(&tasks_),
-        "urgency" => Schedule::schedule_according_to_myrjam(&tasks_),
+        "importance" => Schedule::schedule_according_to_importance(tasks_),
+        "urgency" => Schedule::schedule_according_to_myrjam(tasks_),
         _ => unreachable!(),
     }?;
-    println!("{}", schedule);
 
-    Ok(())
+    Ok(schedule)
 }
 
 

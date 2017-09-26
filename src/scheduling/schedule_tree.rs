@@ -3,32 +3,33 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::{Add, Range, Sub};
+use std::rc::Rc;
 
 use take_mut;
 
 use util::WithSideEffects;
 
 
-#[derive(Debug)]
-pub struct ScheduleTree<'a, T, D: 'a + Eq + Hash> {
-    root: Option<Node<'a, T, D>>,
+#[derive(Debug, Default)]
+pub struct ScheduleTree<T, D: Eq + Hash> {
+    root: Option<Node<T, D>>,
     scope: Option<Range<T>>,
-    data_map: HashMap<&'a D, T>,
+    data_map: HashMap<Rc<D>, T>,
 }
 
 
 #[derive(Debug, PartialEq)]
-pub enum Node<'a, T, D: 'a> {
-    Leaf { start: T, end: T, data: &'a D },
+pub enum Node<T, D> {
+    Leaf { start: T, end: T, data: Rc<D> },
     Intermediate {
         free: Range<T>,
-        left: Box<Node<'a, T, D>>,
-        right: Box<Node<'a, T, D>>,
+        left: Box<Node<T, D>>,
+        right: Box<Node<T, D>>,
     },
 }
 
 
-impl<'a, T, D> ScheduleTree<'a, T, D>
+impl<T, D> ScheduleTree<T, D>
     where T: Copy + Ord + Debug,
           D: Debug + Eq + Hash
 {
@@ -42,7 +43,7 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
     }
 
     /// Returns a chronological iterator of the schedule tree.
-    pub fn iter<'b>(&'b self) -> Iter<'b, 'a, T, D> {
+    pub fn iter(&self) -> Iter<T, D> {
         Iter { path: self.root.iter().collect() }
     }
 
@@ -54,10 +55,11 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
     ///
     /// Returns whether the scheduling succeeded.
     #[allow(dead_code)]
-    pub fn schedule_exact<W>(&mut self, start: T, duration: W, data: &'a D) -> bool
+    pub fn schedule_exact<W>(&mut self, start: T, duration: W, data: D) -> bool
         where T: Add<W, Output = T>
     {
-        self.schedule_exact_(start, duration, data)
+        let data = Rc::new(data);
+        self.schedule_exact_(start, duration, Rc::clone(&data))
             .with_side_effects(|start| self.update_map(start, data))
             .is_some()
     }
@@ -65,11 +67,11 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
     /// See `schedule_exact` for details.
     ///
     /// Returns the start of the scheduling if it succeeded, otherwise None
-    fn schedule_exact_<W>(&mut self, start: T, duration: W, data: &'a D) -> Option<T>
+    fn schedule_exact_<W>(&mut self, start: T, duration: W, data: Rc<D>) -> Option<T>
         where T: Add<W, Output = T>
     {
         let end = start + duration;
-        return_on_some!(self.try_schedule_trivial_cases(start, end, data));
+        return_on_some!(self.try_schedule_trivial_cases(start, end, Rc::clone(&data)));
 
         self.root.as_mut()
             .expect("Internal error: root could not be taken as mut ref")
@@ -80,11 +82,12 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
     /// must be scheduled after `min_start` when given.
     ///
     /// Returns whether the scheduling succeeded.
-    pub fn schedule_close_before<W>(&mut self, end: T, duration: W, min_start: Option<T>, data: &'a D) -> bool
+    pub fn schedule_close_before<W>(&mut self, end: T, duration: W, min_start: Option<T>, data: D) -> bool
         where T: Add<W, Output = T> + Sub<W, Output = T>,
               W: Copy + Debug
     {
-        self.schedule_close_before_(end, duration, min_start, data)
+        let data = Rc::new(data);
+        self.schedule_close_before_(end, duration, min_start, Rc::clone(&data))
             .with_side_effects(|start| self.update_map(start, data))
             .is_some()
     }
@@ -92,18 +95,18 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
     /// See `schedule_close_before` for details.
     ///
     /// Returns the start of the scheduling if it succeeded, otherwise None
-    fn schedule_close_before_<W>(&mut self, end: T, duration: W, min_start: Option<T>, data: &'a D) -> Option<T>
+    fn schedule_close_before_<W>(&mut self, end: T, duration: W, min_start: Option<T>, data: Rc<D>) -> Option<T>
         where T: Add<W, Output = T> + Sub<W, Output = T>,
               W: Copy + Debug
     {
         assert!(min_start.map_or(true, |min_start| min_start + duration <= end));
 
         let optimal_start = end - duration;
-        return_on_some!(self.try_schedule_trivial_cases(optimal_start, end, data));
+        return_on_some!(self.try_schedule_trivial_cases(optimal_start, end, Rc::clone(&data)));
 
         return_on_some!(self.root.as_mut()
                         .expect("Internal error: root could not be taken as mut ref")
-                        .insert_before(end, duration, min_start, data));
+                        .insert_before(end, duration, min_start, Rc::clone(&data)));
 
         // As last resort, try to schedule before current scope if min_start allows
         let scope = self.scope.as_ref().cloned()
@@ -130,11 +133,12 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
     /// must be scheduled before `max_end` when given.
     ///
     /// Returns whether the scheduling succeeded.
-    pub fn schedule_close_after<W>(&mut self, start: T, duration: W, max_end: Option<T>, data: &'a D) -> bool
+    pub fn schedule_close_after<W>(&mut self, start: T, duration: W, max_end: Option<T>, data: D) -> bool
         where T: Add<W, Output = T> + Sub<W, Output = T>,
               W: Copy + Debug
     {
-        self.schedule_close_after_(start, duration, max_end, data)
+        let data = Rc::new(data);
+        self.schedule_close_after_(start, duration, max_end, Rc::clone(&data))
             .with_side_effects(|start| self.update_map(start, data))
             .is_some()
     }
@@ -142,18 +146,18 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
     /// See `schedule_close_after` for details.
     ///
     /// Returns the start of the scheduling if it succeeded, otherwise None
-    fn schedule_close_after_<W>(&mut self, start: T, duration: W, max_end: Option<T>, data: &'a D) -> Option<T>
+    fn schedule_close_after_<W>(&mut self, start: T, duration: W, max_end: Option<T>, data: Rc<D>) -> Option<T>
         where T: Add<W, Output = T> + Sub<W, Output = T>,
               W: Copy + Debug
     {
         assert!(max_end.map_or(true, |max_end| start + duration <= max_end));
 
         let optimal_end = start + duration;
-        return_on_some!(self.try_schedule_trivial_cases(start, optimal_end, data));
+        return_on_some!(self.try_schedule_trivial_cases(start, optimal_end, Rc::clone(&data)));
 
         return_on_some!(self.root.as_mut()
                         .expect("Internal error: root could not be taken as mut ref")
-                        .insert_after(start, duration, max_end, data));
+                        .insert_after(start, duration, max_end, Rc::clone(&data)));
 
         // As last resort, try to schedule after current scope if max_end allows
         let scope = self.scope.as_ref().cloned()
@@ -182,7 +186,7 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
     /// (c) the most optimal start and end fall completely after the right-most child in the tree
     ///
     /// Returns the start of the scheduling if it succeeded, otherwise None
-    fn try_schedule_trivial_cases(&mut self, start: T, end: T, data: &'a D) -> Option<T> {
+    fn try_schedule_trivial_cases(&mut self, start: T, end: T, data: Rc<D>) -> Option<T> {
         let new_node = Node::Leaf { start, end, data };
 
         if self.root.is_none() {
@@ -221,7 +225,7 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
     /// Removes the given data from the schedule tree.
     ///
     /// Returns the related entry from the tree if the tree contained it, otherwise None.
-    pub fn unschedule(&mut self, data: &'a D) -> Option<Entry<'a, T, D>> {
+    pub fn unschedule<'a>(&mut self, data: &'a D) -> Option<Entry<T, D>> {
         let when = self.remove_from_map(data);
         match (self.root.take(), when) {
             (Some(mut root), Some(when)) => {
@@ -229,13 +233,22 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
                     Node::Leaf { start, end, data } => {
                         self.root = None;
                         self.scope = None;
-                        Some(Entry { start, end, data })
+                        Some(Entry {
+                            start,
+                            end,
+                            data: Rc::try_unwrap(data).expect("Internal error: rc was not 1"),
+                        })
                     },
                     Node::Intermediate { .. } => {
                         let entry = root.unschedule(when, data)
                             .map(|(entry, scope)| {
                                 self.scope = Some(scope);
-                                entry
+                                Entry {
+                                    start: entry.start,
+                                    end: entry.end,
+                                    data: Rc::try_unwrap(entry.data)
+                                        .expect("Internal error: rc was not 1"),
+                                }
                             });
                         self.root = Some(root);
                         entry
@@ -246,15 +259,15 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
         }
     }
 
-    pub fn when_scheduled(&self, data: &'a D) -> Option<&T> {
+    pub fn when_scheduled<'a>(&self, data: &'a D) -> Option<&T> {
         self.data_map.get(data)
     }
 
-    fn remove_from_map(&mut self, data: &'a D) -> Option<T> {
+    fn remove_from_map<'a>(&mut self, data: &'a D) -> Option<T> {
         self.data_map.remove(data)
     }
 
-    fn update_map(&mut self, start: T, data: &'a D) {
+    fn update_map(&mut self, start: T, data: Rc<D>) {
         let old_value = self.data_map.insert(data, start);
         if old_value.is_some() {
             panic!("Internal error: same data is being entered twice")
@@ -263,14 +276,14 @@ impl<'a, T, D> ScheduleTree<'a, T, D>
 }
 
 
-impl<'a, T, D> Node<'a, T, D>
+impl<T, D> Node<T, D>
     where T: Copy + Ord + Debug,
           D: Debug
 {
     /// Tries to insert a node with given `start`, `end` and `data` as a descendant of this node.
     ///
     /// Returns the start of the scheduling if it succeeded, otherwise None
-    fn insert(&mut self, start: T, end: T, data: &'a D) -> Option<T> {
+    fn insert(&mut self, start: T, end: T, data: Rc<D>) -> Option<T> {
         match *self {
             Node::Leaf { .. } => None,
             Node::Intermediate {
@@ -299,7 +312,7 @@ impl<'a, T, D> Node<'a, T, D>
     /// than `min_start`, when given.
     ///
     /// Returns the start of the scheduling if it succeeded, otherwise None
-    fn insert_before<W>(&mut self, end: T, duration: W, min_start: Option<T>, data: &'a D) -> Option<T>
+    fn insert_before<W>(&mut self, end: T, duration: W, min_start: Option<T>, data: Rc<D>) -> Option<T>
         where T: Sub<W, Output = T>,
               W: Copy + Debug
     {
@@ -312,14 +325,14 @@ impl<'a, T, D> Node<'a, T, D>
             } => {
                 // If the end is inside the right child, try that first
                 if free.end < end {
-                    return_on_some!(right.insert_before(end, duration, min_start, data))
+                    return_on_some!(right.insert_before(end, duration, min_start, Rc::clone(&data)))
                 }
                 // Second, try to insert it in the free range of the current node
                 let end = min(end, free.end);
                 if free.start <= end - duration &&
                     min_start.map_or(true, |min_start| min_start <= end - duration)
                 {
-                    unchecked_insert(end - duration, end, data, right, free);
+                    unchecked_insert(end - duration, end, Rc::clone(&data), right, free);
                     return Some(end - duration)
                 }
 
@@ -338,7 +351,7 @@ impl<'a, T, D> Node<'a, T, D>
     /// than `max_end`, when given.
     ///
     /// Returns the start of the scheduling if it succeeded, otherwise None
-    fn insert_after<W>(&mut self, start: T, duration: W, max_end: Option<T>, data: &'a D) -> Option<T>
+    fn insert_after<W>(&mut self, start: T, duration: W, max_end: Option<T>, data: Rc<D>) -> Option<T>
         where T: Ord + Add<W, Output = T>,
               W: Copy + Debug
     {
@@ -351,7 +364,7 @@ impl<'a, T, D> Node<'a, T, D>
             } => {
                 // If the start is inside the left child, try that first
                 if start < free.start {
-                    return_on_some!(left.insert_after(start, duration, max_end, data))
+                    return_on_some!(left.insert_after(start, duration, max_end, Rc::clone(&data)))
                 }
                 // Second, try to insert it in the free range of the current node
                 let start = max(start, free.start);
@@ -375,19 +388,31 @@ impl<'a, T, D> Node<'a, T, D>
     ///
     /// Returns None if that combination wasn't found, otherwise a tuple of an entry representing
     /// the unscheduled item and the new scope of this node.
-    fn unschedule(&mut self, start: T, data: &'a D) -> Option<(Entry<'a, T, D>, Range<T>)>
-        where D: PartialEq
+    #[cfg_attr(feature="cargo-clippy", allow(type_complexity))]
+    fn unschedule<'a>(&mut self, start: T, data: &'a D) -> Option<(Entry<T, Rc<D>>, Range<T>)>
+        where D: PartialEq,
     {
+        // This code is horrible. How can I fix this while maintain interior mutability?
+
         match *self {
             Node::Leaf { .. } => panic!("Internal error: `unschedule` called on a leaf node"),
             Node::Intermediate { .. } => {
                 if start < self.unchecked_free_ref().start {
-                    match *self.unchecked_left_mut() {
-                        Node::Leaf { start: node_start, end, data: node_data } => {
-                            if start == node_start && data == node_data {
-                                take_mut::take(self, |self_| self_.unchecked_right());
-                                Some((Entry { start, end, data },
-                                      self.find_scope()))
+                    match *self.unchecked_left_ref() {
+                        Node::Leaf { .. } => {
+                            if start == *self.unchecked_left_ref().unchecked_start_ref()
+                                && *data == **self.unchecked_left_ref().unchecked_data_ref() {
+                                let mut entry = None;
+                                take_mut::take(self, |self_| {
+                                    match self_ {
+                                        Node::Intermediate { left: box Node::Leaf { start, end, data }, right, .. } => {
+                                            entry = Some(Entry { start, end, data });
+                                            *right
+                                        },
+                                        _ => unreachable!(),
+                                    }
+                                });
+                                entry.map(|entry| (entry, self.find_scope()))
                             } else {
                                 None
                             }
@@ -401,12 +426,21 @@ impl<'a, T, D> Node<'a, T, D>
                         },
                     }
                 } else if self.unchecked_free_ref().end <= start {
-                    match *self.unchecked_right_mut() {
-                        Node::Leaf { start: node_start, end, data: node_data } => {
-                            if start == node_start && data == node_data {
-                                take_mut::take(self, |self_| self_.unchecked_left());
-                                Some((Entry { start, end, data },
-                                      self.find_scope()))
+                    match *self.unchecked_right_ref() {
+                        Node::Leaf { .. } => {
+                            if start == *self.unchecked_right_ref().unchecked_start_ref()
+                                && *data == **self.unchecked_right_ref().unchecked_data_ref() {
+                                let mut entry = None;
+                                take_mut::take(self, |self_| {
+                                    match self_ {
+                                        Node::Intermediate { left, right: box Node::Leaf { start, end, data }, .. } => {
+                                            entry = Some(Entry { start, end, data });
+                                            *left
+                                        },
+                                        _ => unreachable!(),
+                                    }
+                                });
+                                entry.map(|entry| (entry, self.find_scope()))
                             } else {
                                 None
                             }
@@ -445,35 +479,35 @@ impl<'a, T, D> Node<'a, T, D>
     //
     // At the moment, they are only necessary for `unschedule`.
 
+    /// Assume `self` is an intermediate node and return a reference to the left child.
+    fn unchecked_left_ref(&self) -> &Node<T, D> {
+        match *self {
+            Node::Leaf { .. } => panic!("Internal error: `unchecked_left_ref` called on a leaf node"),
+            Node::Intermediate { ref left, .. } => left,
+        }
+    }
+
     /// Assume `self` is an intermediate node and return a mutable reference to the left child.
-    fn unchecked_left_mut(&mut self) -> &mut Node<'a, T, D> {
+    fn unchecked_left_mut(&mut self) -> &mut Node<T, D> {
         match *self {
             Node::Leaf { .. } => panic!("Internal error: `unchecked_left_mut` called on a leaf node"),
             Node::Intermediate { ref mut left, .. } => left,
         }
     }
 
+    /// Assume `self` is an intermediate node and return a reference to the right child.
+    fn unchecked_right_ref(&self) -> &Node<T, D> {
+        match *self {
+            Node::Leaf { .. } => panic!("Internal error: `unchecked_right_ref` called on a leaf node"),
+            Node::Intermediate { ref right, .. } => right,
+        }
+    }
+
     /// Assume `self` is an intermediate node and return a mutable reference to the right child.
-    fn unchecked_right_mut(&mut self) -> &mut Node<'a, T, D> {
+    fn unchecked_right_mut(&mut self) -> &mut Node<T, D> {
         match *self {
             Node::Leaf { .. } => panic!("Internal error: `unchecked_right_mut` called on a leaf node"),
             Node::Intermediate { ref mut right, .. } => right,
-        }
-    }
-
-    /// Assume `self` is an intermediate node and return the left child.
-    fn unchecked_left(self) -> Node<'a, T, D> {
-        match self {
-            Node::Leaf { .. } => panic!("Internal error: `unchecked_left` called on a leaf node"),
-            Node::Intermediate { box left, .. } => left,
-        }
-    }
-
-    /// Assume `self` is an intermediate node and return the right child.
-    fn unchecked_right(self) -> Node<'a, T, D> {
-        match self {
-            Node::Leaf { .. } => panic!("Internal error: `unchecked_right` called on a leaf node"),
-            Node::Intermediate { box right, .. } => right,
         }
     }
 
@@ -492,13 +526,29 @@ impl<'a, T, D> Node<'a, T, D>
             Node::Intermediate { ref mut free, .. } => free,
         }
     }
+
+    /// Assume `self` is a leaf node and return a reference to the start.
+    fn unchecked_start_ref(&self) -> &T {
+        match *self {
+            Node::Leaf { ref start, .. } => start,
+            Node::Intermediate { .. } => panic!("Internal error: `unchecked_start_ref` called on an intermediate node"),
+        }
+    }
+
+    /// Assume `self` is a leaf node and return a reference to the data.
+    fn unchecked_data_ref(&self) -> &Rc<D> {
+        match *self {
+            Node::Leaf { ref data, .. } => data,
+            Node::Intermediate { .. } => panic!("Internal error: `unchecked_data_ref` called on an intermediate node"),
+        }
+    }
 }
 
 /// Inserts a leaf node with given start, end and data in place of the right node of some other
 /// node `x`. The original right node of `x` becomes the right node of the right node of `x` and
 /// the new node becomes the left node of the right node of `x`. The free range of `x` is also
 /// passed and updated.
-fn unchecked_insert<'a, T, D>(start: T, end: T, data: &'a D, right: &mut Node<'a, T, D>, free: &mut Range<T>)
+fn unchecked_insert<T, D>(start: T, end: T, data: Rc<D>, right: &mut Node<T, D>, free: &mut Range<T>)
     where T: Ord + Copy + Debug,
           D: Debug
 {
@@ -520,37 +570,91 @@ fn unchecked_insert<'a, T, D>(start: T, end: T, data: &'a D, right: &mut Node<'a
 
 
 #[derive(Debug)]
-pub struct Entry<'a, T, D: 'a> {
+pub struct Entry<T, D> {
     pub start: T,
     pub end: T,
-    pub data: &'a D,
+    pub data: D,
 }
-
 
 #[derive(Debug)]
-pub struct Iter<'b, 'a: 'b, T: 'b, D: 'a> {
-    path: Vec<&'b Node<'a, T, D>>,
+pub struct Iter<'a, T: 'a, D: 'a> {
+    path: Vec<&'a Node<T, D>>,
 }
 
+#[derive(Debug)]
+pub struct IntoIter<T, D: Eq + Hash> {
+    path: Vec<Node<T, D>>,
+    data_map: HashMap<Rc<D>, T>,
+}
 
-impl<'b, 'a, T, D> Iterator for Iter<'b, 'a, T, D>
+impl<'a, T, D> IntoIterator for &'a ScheduleTree<T, D>
+    where T: Copy + Debug + Ord,
+          D: Debug + Eq + Hash,
+{
+    type Item = Entry<T, &'a D>;
+    type IntoIter = Iter<'a, T, D>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<T, D> IntoIterator for ScheduleTree<T, D>
+    where D: Debug + Eq + Hash,
+{
+    type Item = Entry<T, D>;
+    type IntoIter = IntoIter<T, D>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter {
+            path: self.root.into_iter().collect(),
+            data_map: self.data_map,
+        }
+    }
+}
+
+impl<'a, T, D> Iterator for Iter<'a, T, D>
     where T: Copy
 {
-    type Item = Entry<'a, T, D>;
+    type Item = Entry<T, &'a D>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.path
             .pop()
-            .and_then(|mut current| {
+            .and_then(|mut current: &'a Node<T, D> | {
                 while let Node::Intermediate {
                               ref left,
                               ref right,
                               ..
                           } = *current {
-                    self.path.push(right);
+                    self.path.push(&**right);
                     current = left;
                 }
-                if let Node::Leaf { start, end, data } = *current {
+                if let Node::Leaf { start, end, ref data } = *current {
+                    Some(Entry { start, end, data: data.as_ref() })
+                } else {
+                    None
+                }
+            })
+    }
+}
+
+impl<T, D> Iterator for IntoIter<T, D>
+    where D: Debug + Eq + Hash
+{
+    type Item = Entry<T, D>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.path
+            .pop()
+            .and_then(|mut current: Node<T, D>| {
+                while let Node::Intermediate { left, right, .. } = current {
+                    self.path.push(*right);
+                    current = *left;
+                }
+                if let Node::Leaf { start, end, data } = current {
+                    self.data_map.remove(&data);
+                    let data = Rc::try_unwrap(data).expect("Internal error: rc was more than 1");
                     Some(Entry { start, end, data })
                 } else {
                     None
@@ -901,7 +1005,7 @@ mod tests {
         // 5..9
         // =>
         // <empty>
-        tree.schedule_exact(5, 4, &data[0]);
+        tree.schedule_exact(5, 4, data[0]);
         let entry = tree.unschedule(&data[0]);
         assert_matches!(entry, Some(Entry { start: 5, end: 9, .. }));
         assert_matches!(tree, ScheduleTree { root: None, scope: None, .. });
@@ -912,8 +1016,8 @@ mod tests {
         // 5..9       13..18
         // =>
         // 5..9
-        tree.schedule_exact(5, 4, &data[0]);
-        tree.schedule_exact(13, 5, &data[1]);
+        tree.schedule_exact(5, 4, data[0]);
+        tree.schedule_exact(13, 5, data[1]);
         let entry = tree.unschedule(&data[1]);
         assert_matches!(entry, Some(Entry { start: 13, end: 18, .. }));
         assert_eq!(tree.scope, Some(5..9));
@@ -924,8 +1028,8 @@ mod tests {
         // 5..9       13..18
         // =>
         // 13..18
-        tree.schedule_exact(5, 4, &data[0]);
-        tree.schedule_exact(13, 5, &data[1]);
+        tree.schedule_exact(5, 4, data[0]);
+        tree.schedule_exact(13, 5, data[1]);
         let entry = tree.unschedule(&data[0]);
         assert_matches!(entry, Some(Entry { start: 5, end: 9, .. }));
         assert_eq!(tree.scope, Some(13..18));
@@ -944,8 +1048,8 @@ mod tests {
         // 10..12  13..18
         // =>
         // 13..18
-        tree.schedule_close_before(9, 4, None, &data[0]);
-        tree.schedule_close_after(10, 2, None, &data[2]);
+        tree.schedule_close_before(9, 4, None, data[0]);
+        tree.schedule_close_after(10, 2, None, data[2]);
 
         let entry = tree.unschedule(&data[0]);
         assert_matches!(entry, Some(Entry { start: 5, end: 9, .. }));
@@ -977,9 +1081,9 @@ mod tests {
         // =>
         // <empty>
         assert_eq!(tree.scope, Some(13..18));
-        tree.schedule_close_after(10, 2, None, &data[0]);
+        tree.schedule_close_after(10, 2, None, data[0]);
         assert_eq!(tree.scope, Some(10..18));
-        tree.schedule_close_before(9, 4, None, &data[2]);
+        tree.schedule_close_before(9, 4, None, data[2]);
         assert_eq!(tree.scope, Some(5..18));
 
         let entry = tree.unschedule(&data[0]);

@@ -63,6 +63,8 @@ fn cli<'a, 'b>(configuration: &Configuration) -> App<'a, 'b> {
              .possible_values(&["content", "deadline", "duration", "importance"]))
         .arg(Arg::with_name("task-id").required(true))
         .arg(Arg::with_name("value").required(true));
+    let list = SubCommand::with_name("tasks")
+        .about("Lists your tasks in the order you added them");
     let schedule = SubCommand::with_name("schedule")
         .about("Lets Eva suggest a schedule for your tasks")
         .arg(Arg::with_name("strategy")
@@ -78,6 +80,7 @@ fn cli<'a, 'b>(configuration: &Configuration) -> App<'a, 'b> {
         .subcommand(add)
         .subcommand(rm)
         .subcommand(set)
+        .subcommand(list)
         .subcommand(schedule)
 }
 
@@ -105,10 +108,20 @@ fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
             let id: u32 = id.parse()
                 .chain_err(|| "Please supply a valid integer as id.")?;
             Ok(eva::set(configuration, field, id, value)?)
-        }
+        },
+        ("tasks", Some(_submatches)) => {
+            let tasks = eva::list_tasks(configuration)?;
+            println!("Tasks:");
+            for task in &tasks {
+                println!("  {}", task);
+            }
+            Ok(())
+        },
         ("schedule", Some(submatches)) => {
             let strategy = submatches.value_of("strategy").unwrap();
-            Ok(eva::print_schedule(configuration, strategy)?)
+            let schedule = eva::schedule(configuration, strategy)?;
+            println!("{}", schedule);
+            Ok(())
         },
         _ => unreachable!(),
     }

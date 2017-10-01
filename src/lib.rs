@@ -103,13 +103,16 @@ impl Hash for Task {
 pub fn add(configuration: &Configuration,
            content: &str,
            deadline: DateTime<Local>,
-           duration: Duration,
+           duration: ::std::time::Duration,
            importance: u32)
     -> Result<()>
 {
     use db::tasks::dsl::tasks;
 
     let connection = db::make_connection(configuration)?;
+
+    let duration = Duration::from_std(duration)
+        .chain_err(|| ErrorKind::Internal("Couldn't convert from std::time::Duration".to_owned()))?;
 
     let new_task = Task {
         id: None,
@@ -222,7 +225,7 @@ fn parse_importance(importance_str: &str) -> Result<u32> {
                                        "Please supply a valid integer".to_owned()))
 }
 
-pub fn parse_duration(duration_hours: &str) -> Result<Duration> {
+fn parse_duration(duration_hours: &str) -> Result<Duration> {
     let hours: f64 = duration_hours.parse()
         .chain_err(|| ErrorKind::Parse("duration".to_owned(),
                                        "Please supply a valid, real number".to_owned()))?;
@@ -231,4 +234,15 @@ pub fn parse_duration(duration_hours: &str) -> Result<Duration> {
                                "Please supply a positive number".to_owned()));
     }
     Ok(Duration::minutes((60.0 * hours) as i64))
+}
+
+pub fn parse_std_duration(duration_hours: &str) -> Result<::std::time::Duration> {
+    let hours: f64 = duration_hours.parse()
+        .chain_err(|| ErrorKind::Parse("duration".to_owned(),
+                                       "Please supply a valid, real number".to_owned()))?;
+    if hours <= 0.0 {
+        bail!(ErrorKind::Parse("duration".to_owned(),
+                               "Please supply a positive number".to_owned()));
+    }
+    Ok(::std::time::Duration::from_secs((3600.0 * hours) as u64))
 }

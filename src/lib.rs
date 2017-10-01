@@ -102,7 +102,7 @@ impl Hash for Task {
 
 pub fn add(configuration: &Configuration,
            content: &str,
-           deadline: &str,
+           deadline: DateTime<Local>,
            duration: &str,
            importance: u32)
     -> Result<()>
@@ -111,7 +111,6 @@ pub fn add(configuration: &Configuration,
 
     let connection = db::make_connection(configuration)?;
 
-    let deadline = parse_datetime(deadline)?;
     let duration = parse_duration(duration)?;
     let new_task = Task {
         id: None,
@@ -210,7 +209,7 @@ pub fn schedule(configuration: &Configuration, strategy: &str) -> Result<Schedul
 }
 
 
-fn parse_datetime(datetime: &str) -> Result<DateTime<Local>> {
+pub fn parse_datetime(datetime: &str) -> Result<DateTime<Local>> {
     Local.datetime_from_str(datetime, "%-d %b %Y %-H:%M")
         .chain_err(|| {
             ErrorKind::Parse("deadline".to_owned(),

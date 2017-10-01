@@ -91,6 +91,7 @@ fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
             let deadline = submatches.value_of("deadline").unwrap();
             let duration = submatches.value_of("duration").unwrap();
             let importance = submatches.value_of("importance").unwrap();
+            let deadline = eva::parse_datetime(deadline)?;
             let importance: u32 = try!(importance.parse()
                 .chain_err(|| "Please supply a valid integer as importance factor."));
             Ok(eva::add(configuration, content, deadline, duration, importance)?)

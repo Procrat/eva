@@ -103,7 +103,7 @@ impl Hash for Task {
 pub fn add(configuration: &Configuration,
            content: &str,
            deadline: DateTime<Local>,
-           duration: &str,
+           duration: Duration,
            importance: u32)
     -> Result<()>
 {
@@ -111,7 +111,6 @@ pub fn add(configuration: &Configuration,
 
     let connection = db::make_connection(configuration)?;
 
-    let duration = parse_duration(duration)?;
     let new_task = Task {
         id: None,
         content: content.to_string(),
@@ -223,7 +222,7 @@ fn parse_importance(importance_str: &str) -> Result<u32> {
                                        "Please supply a valid integer".to_owned()))
 }
 
-fn parse_duration(duration_hours: &str) -> Result<Duration> {
+pub fn parse_duration(duration_hours: &str) -> Result<Duration> {
     let hours: f64 = duration_hours.parse()
         .chain_err(|| ErrorKind::Parse("duration".to_owned(),
                                        "Please supply a valid, real number".to_owned()))?;

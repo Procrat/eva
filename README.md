@@ -191,14 +191,13 @@ database = "C:\\Users\\<username>\\AppData\\Roaming\\eva\\db.sqlite"
 - [x] Automatic scheduling
 - [x] User configuration
 - [x] Abstract configuration interface
+- [x] [Web interface](https://github.com/Procrat/eva-web)
+- [ ] Time segmentation (e.g. sleep, working hours, morning rituals)
 - [ ] Manual scheduling of fixed events
 - [ ] Recurring events
-- [ ] Time segmentation (e.g. sleep, working hours, morning rituals)
-- [ ] Abstract data interface
 
 ### Next goals
 
-- Web interface (based on [Procrat/rust-asmjs-fiddlings](https://github.com/Procrat/rust-asmjs-fiddlings))
 - Task dependencies
 - CalDAV / Google Calendar integration
   - Optional reminders

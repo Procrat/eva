@@ -1,0 +1,5 @@
+language: rust
+rust: nightly
+install: cargo build
+script: cargo test
+cache: cargo

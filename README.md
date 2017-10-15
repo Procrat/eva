@@ -1,6 +1,6 @@
-# Eva - Eva Virtual Assistant
+# Eva - Eva Virtual Assistant  [![Build Status](https://travis-ci.org/Procrat/eva.svg?branch=master)](https://travis-ci.org/Procrat/eva)
 
-Let algorithms decide your life.
+> Let algorithms decide your life.
 
 
 ## Disclaimer: work in progress

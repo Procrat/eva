@@ -10,6 +10,12 @@ CLI wrapper around a simple scheduling algorithm. Some people already find this
 useful however, so maybe you do too!
 
 
+## [Quick demo](https://procrat.github.io/eva-web)
+
+The front end is developed in the [eva-web
+project](https://github.com/Procrat/eva-web).
+
+
 ## Goal
 
 Eva aims to be an opinionated application to manage your life when you don't

@@ -1,4 +1,5 @@
 extern crate app_dirs;
+extern crate chrono;
 extern crate clap;
 extern crate config;
 extern crate eva;
@@ -12,15 +13,19 @@ use eva::configuration::Configuration;
 use errors::*;
 
 mod configuration;
+mod parse;
 
 #[allow(unused_doc_comment)]
 mod errors {
-    use configuration;
     use eva;
+
+    use configuration;
+    use parse;
 
     error_chain! {
         links {
             Configuration(configuration::Error, configuration::ErrorKind);
+            Parse(parse::Error, parse::ErrorKind);
         }
         foreign_links {
             EvaCore(eva::Error);
@@ -91,28 +96,29 @@ fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
             let deadline = submatches.value_of("deadline").unwrap();
             let duration = submatches.value_of("duration").unwrap();
             let importance = submatches.value_of("importance").unwrap();
-            let deadline = eva::parse_datetime(deadline)?;
-            let duration = eva::parse_std_duration(duration)?;
-            let importance: u32 = try!(importance.parse()
-                .chain_err(|| "Please supply a valid integer as importance factor."));
-            Ok(eva::add(configuration, content, deadline, duration, importance)?)
+            let new_task = eva::NewTask {
+                content: content.to_owned(),
+                deadline: parse::deadline(deadline)?,
+                duration: parse::duration(duration)?,
+                importance: parse::importance(importance)?,
+            };
+            let _task = eva::add(configuration, new_task)?;
+            Ok(())
         },
         ("rm", Some(submatches)) => {
             let id = submatches.value_of("task-id").unwrap();
-            let id: u32 = id.parse()
-                .chain_err(|| "Please supply a valid integer as id.")?;
+            let id = parse::id(id)?;
             Ok(eva::remove(configuration, id)?)
         },
         ("set", Some(submatches)) => {
             let field = submatches.value_of("property").unwrap();
             let id = submatches.value_of("task-id").unwrap();
             let value = submatches.value_of("value").unwrap();
-            let id: u32 = id.parse()
-                .chain_err(|| "Please supply a valid integer as id.")?;
-            Ok(eva::set(configuration, field, id, value)?)
+            let id = parse::id(id)?;
+            Ok(set_field(configuration, field, id, value)?)
         },
         ("tasks", Some(_submatches)) => {
-            let tasks = eva::list_tasks(configuration)?;
+            let tasks = eva::all(configuration)?;
             println!("Tasks:");
             for task in &tasks {
                 println!("  {}", task);
@@ -127,6 +133,18 @@ fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
         },
         _ => unreachable!(),
     }
+}
+
+fn set_field(configuration: &Configuration, field: &str, id: u32, value: &str) -> Result<()> {
+    let mut task = eva::get(configuration, id)?;
+    match field {
+        "content" => task.content = value.to_string(),
+        "deadline" => task.deadline = parse::deadline(value)?,
+        "duration" => task.duration = parse::duration(value)?,
+        "importance" => task.importance = parse::importance(value)?,
+        _ => unreachable!(),
+    };
+    Ok(eva::update(configuration, task)?)
 }
 
 fn handle_error(error: &Error) {

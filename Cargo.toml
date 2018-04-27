@@ -8,8 +8,8 @@ app_dirs = "1.1"
 chrono = "0.4"
 clap = "2.26"
 config = "0.7"
-diesel = {version = "0.16", features = ["sqlite", "chrono"]}
-diesel_codegen = {version = "0.16", features = ["sqlite"]}
+diesel = {version = "0.99", features = ["sqlite"]}
+diesel_migrations = {version = "0.99", features = ["sqlite"]}
 derive-new = "0.5"
 dotenv = "0.10"
 error-chain = "0.10"

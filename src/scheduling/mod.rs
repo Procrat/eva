@@ -195,7 +195,7 @@ impl fmt::Display for ScheduledTask {
 
 impl fmt::Display for Task {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let prefix = self.id.map_or("".to_string(), |id| format!("{}. ", id));
+        let prefix = format!("{}. ", self.id);
         write!(f, "{}{}\n    (deadline: {}, duration: {}, importance: {})",
                prefix,
                self.content,
@@ -273,14 +273,14 @@ mod tests {
                     #[test]
                     fn schedule_sets_of_two() {
                         let mut tasks = vec![Task {
-                            id: None,
+                            id: 0,
                             content: "find meaning to life".to_string(),
                             deadline: Local::now() + Duration::hours(1),
                             duration: Duration::hours(1) - *SCHEDULE_DELAY * 2,
                             importance: 6,
                         },
                         Task {
-                            id: None,
+                            id: 1,
                             content: "stop giving a fuck".to_string(),
                             deadline: Local::now() + Duration::hours(3),
                             duration: Duration::hours(2) - *SCHEDULE_DELAY * 2,
@@ -354,42 +354,42 @@ mod tests {
 
     fn taskset_of_myrjam() -> Vec<Task> {
         let task1 = Task {
-            id: None,
+            id: 1,
             content: "take over the world".to_string(),
             deadline: Local::now() + Duration::days(6 * 365),
             duration: Duration::hours(1000),
             importance: 10,
         };
         let task2 = Task {
-            id: None,
+            id: 2,
             content: "make onion soup".to_string(),
             deadline: Local::now() + Duration::hours(2),
             duration: Duration::hours(1),
             importance: 3,
         };
         let task3 = Task {
-            id: None,
+            id: 3,
             content: "publish Commander Mango 3".to_string(),
             deadline: Local::now() + Duration::days(365 / 2),
             duration: Duration::hours(50),
             importance: 6,
         };
         let task4 = Task {
-            id: None,
+            id: 4,
             content: "sculpt".to_string(),
             deadline: Local::now() + Duration::days(30),
             duration: Duration::hours(10),
             importance: 4,
         };
         let task5 = Task {
-            id: None,
+            id: 5,
             content: "organise birthday present".to_string(),
             deadline: Local::now() + Duration::days(30),
             duration: Duration::hours(5),
             importance: 10,
         };
         let task6 = Task {
-            id: None,
+            id: 6,
             content: "make dentist appointment".to_string(),
             deadline: Local::now() + Duration::days(7),
             duration: Duration::minutes(10),
@@ -400,14 +400,14 @@ mod tests {
 
     fn taskset_just_in_time() -> Vec<Task> {
         let task1 = Task {
-            id: None,
+            id: 1,
             content: "go to school".to_string(),
             deadline: Local::now() + Duration::days(23 * 365),
             duration: Duration::days(23 * 365) - *SCHEDULE_DELAY * 2,
             importance: 5,
         };
         let task2 = Task {
-            id: None,
+            id: 2,
             content: "work till you die".to_string(),
             deadline: Local::now() + Duration::days(65 * 365),
             duration: Duration::days(42 * 365),
@@ -479,63 +479,63 @@ mod tests {
     fn taskset_of_gandalf() -> Vec<Task> {
         vec![
             Task {
-                id: None,
+                id: 0,
                 content: "Think of plan to get rid of The Ring".to_string(),
                 deadline: Local::now() + Duration::days(12) + Duration::hours(15),
                 duration: Duration::days(2),
                 importance: 9
             },
             Task {
-                id: None,
+                id: 1,
                 content: "Ask advice from Saruman".to_string(),
                 deadline: Local::now() + Duration::days(8) + Duration::hours(15),
                 duration: Duration::days(3),
                 importance: 4
             },
             Task {
-                id: None,
+                id: 2,
                 content: "Visit Bilbo in Rivendel".to_string(),
                 deadline: Local::now() + Duration::days(13) + Duration::hours(15),
                 duration: Duration::days(2),
                 importance: 2
             },
             Task {
-                id: None,
+                id: 3,
                 content: "Make some firework for the hobbits".to_string(),
                 deadline: Local::now() + Duration::hours(33),
                 duration: Duration::hours(3),
                 importance: 3
             },
             Task {
-                id: None,
+                id: 4,
                 content: "Get riders of Rohan to help Gondor".to_string(),
                 deadline: Local::now() + Duration::days(21) + Duration::hours(15),
                 duration: Duration::days(7),
                 importance: 7,
             },
             Task {
-                id: None,
+                id: 5,
                 content: "Find some good pipe-weed".to_string(),
                 deadline: Local::now() + Duration::days(2) + Duration::hours(15),
                 duration: Duration::hours(1),
                 importance: 8
             },
             Task {
-                id: None,
+                id: 6,
                 content: "Go shop for white clothing".to_string(),
                 deadline: Local::now() + Duration::days(33) + Duration::hours(15),
                 duration: Duration::hours(2),
                 importance: 3
             },
             Task {
-                id: None,
+                id: 7,
                 content: "Prepare epic-sounding one-liners".to_string(),
                 deadline: Local::now() + Duration::hours(34),
                 duration: Duration::hours(2),
                 importance: 10
             },
             Task {
-                id: None,
+                id: 8,
                 content: "Recharge staff batteries".to_string(),
                 deadline: Local::now() + Duration::days(1) + Duration::hours(15),
                 duration: Duration::minutes(30),
@@ -588,14 +588,14 @@ mod tests {
 
     fn taskset_with_missed_deadline() -> Vec<Task> {
         let task1 = Task {
-            id: None,
+            id: 1,
             content: "conquer the world".to_string(),
             deadline: Local::now() + Duration::days(3),
             duration: Duration::days(1),
             importance: 5,
         };
         let task2 = Task {
-            id: None,
+            id: 2,
             content: "save the world".to_string(),
             deadline: Local::now() - Duration::days(1),
             duration: Duration::minutes(5),
@@ -606,14 +606,14 @@ mod tests {
 
     fn taskset_with_impossible_deadline() -> Vec<Task> {
         let task1 = Task {
-            id: None,
+            id: 1,
             content: "conquer the world".to_string(),
             deadline: Local::now() + Duration::days(3),
             duration: Duration::days(1),
             importance: 5,
         };
         let task2 = Task {
-            id: None,
+            id: 2,
             content: "save the world".to_string(),
             deadline: Local::now() + Duration::hours(23),
             duration: Duration::days(1),
@@ -624,14 +624,14 @@ mod tests {
 
     fn taskset_impossible_combination() -> Vec<Task> {
         let task1 = Task {
-            id: None,
+            id: 1,
             content: "Learn Rust".to_string(),
             deadline: Local::now() + Duration::days(1),
             duration: Duration::days(1) - *SCHEDULE_DELAY * 2,
             importance: 5,
         };
         let task2 = Task {
-            id: None,
+            id: 2,
             content: "Program Eva".to_string(),
             deadline: Local::now() + Duration::days(2),
             duration: Duration::days(1) + Duration::minutes(1),

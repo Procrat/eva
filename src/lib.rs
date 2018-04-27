@@ -6,7 +6,7 @@ extern crate derive_new;
 #[macro_use]
 extern crate diesel;
 #[macro_use]
-extern crate diesel_codegen;
+extern crate diesel_migrations;
 #[macro_use]
 extern crate error_chain;
 extern crate itertools;
@@ -22,18 +22,18 @@ use std::hash::{Hash, Hasher};
 
 use chrono::prelude::*;
 use chrono::Duration;
-use diesel::prelude::*;
 
 use configuration::Configuration;
 
 pub use errors::{Error, ErrorKind, Result, ResultExt};
 pub use scheduling::{Schedule, ScheduledTask};
+use database::Database;
 
 #[macro_use]
 mod util;
 
 pub mod configuration;
-mod db;
+mod database;
 mod scheduling;
 
 #[allow(unused_doc_comment)]
@@ -61,32 +61,25 @@ mod errors {
     }
 }
 
-
-#[derive(Debug, Eq, new, Clone)]
-pub struct Task {
-    pub id: Option<u32>,
+#[derive(Debug, new, Clone)]
+pub struct NewTask {
     pub content: String,
     pub deadline: DateTime<Local>,
     pub duration: Duration,
     pub importance: u32,
 }
 
-impl PartialEq for Task {
-    fn eq(&self, other: &Self) -> bool {
-        let equal_id = match (self.id, other.id) {
-            (Some(id1), Some(id2)) => id1 == id2,
-            _ => true,
-        };
-        equal_id &&
-            self.content == other.content &&
-            self.deadline == other.deadline &&
-            self.duration == other.duration &&
-            self.importance == other.importance
-    }
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct Task {
+    pub id: u32,
+    pub content: String,
+    pub deadline: DateTime<Local>,
+    pub duration: Duration,
+    pub importance: u32,
 }
 
-// Hack because chrono::Duration, which is a re-export of std::time::Duration, does not re-export
-// implementation of Hash trait.
+
+// Hack because chrono::Duration doesn't implement the Hash trait.
 impl Hash for Task {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state);
@@ -100,149 +93,44 @@ impl Hash for Task {
 }
 
 
-pub fn add(configuration: &Configuration,
-           content: &str,
-           deadline: DateTime<Local>,
-           duration: ::std::time::Duration,
-           importance: u32)
-    -> Result<()>
-{
-    use db::tasks::dsl::tasks;
-
-    let connection = db::make_connection(configuration)?;
-
-    let duration = Duration::from_std(duration)
-        .chain_err(|| ErrorKind::Internal("Couldn't convert from std::time::Duration".to_owned()))?;
-
-    let new_task = Task {
-        id: None,
-        content: content.to_string(),
-        deadline,
-        duration,
-        importance,
-    };
-
-    diesel::insert(&new_task)
-        .into(tasks)
-        .execute(&connection)
-        .chain_err(|| ErrorKind::Database("while trying to add a task".to_owned()))?;
-
-    Ok(())
+pub fn add(configuration: &Configuration, new_task: NewTask) -> Result<Task> {
+    let database = default_database(configuration)?;
+    database.add_task(new_task)
 }
 
 pub fn remove(configuration: &Configuration, id: u32) -> Result<()> {
-    use db::tasks::dsl::tasks;
-
-    let connection = db::make_connection(configuration)?;
-
-    let amount_deleted =
-        diesel::delete(tasks.find(id as i32))
-        .execute(&connection)
-        .chain_err(|| ErrorKind::Database("while trying to remove a task".to_owned()))?;
-
-    if amount_deleted == 0 {
-        bail!(ErrorKind::Database(format!("while trying to find the task with id {}", id)));
-    } else if amount_deleted > 1 {
-        bail!(ErrorKind::Internal("multiple tasks got deleted".to_owned()));
-    }
-
-    Ok(())
+    let database = default_database(configuration)?;
+    database.remove_task(id)
 }
 
-pub fn set(configuration: &Configuration, field_name: &str, id: u32, value: &str) -> Result<()> {
-    assert!(["content", "deadline", "duration", "importance"].contains(&field_name));
-
-    use db::tasks::dsl::tasks;
-
-    let connection = db::make_connection(configuration)?;
-
-    let mut task: Task = tasks.find(id as i32)
-        .first(&connection)
-        .chain_err(|| ErrorKind::Database("while trying to retrieve a task".to_owned()))?;
-
-    match field_name {
-        "content" => task.content = value.to_string(),
-        "deadline" => task.deadline = parse_datetime(value)?,
-        "duration" => task.duration = parse_duration(value)?,
-        "importance" => task.importance = parse_importance(value)?,
-        _ => unreachable!(),
-    }
-
-    let amount_updated = diesel::update(&task)
-        .set(task)
-        .execute(&connection)
-        .chain_err(|| ErrorKind::Database("while trying to update a task".to_owned()))?;
-
-    if amount_updated == 0 {
-        bail!(ErrorKind::Database("while trying to update a task".to_owned()));
-    } else if amount_updated > 1 {
-        bail!(ErrorKind::Internal("multiple tasks got deleted".to_owned()));
-    }
-
-    Ok(())
+pub fn get(configuration: &Configuration, id: u32) -> Result<Task> {
+    let database = default_database(configuration)?;
+    database.find_task(id)
 }
 
-pub fn list_tasks(configuration: &Configuration) -> Result<Vec<Task>> {
-    use db::tasks::dsl::tasks;
+pub fn update(configuration: &Configuration, task: Task) -> Result<()> {
+    let database = default_database(configuration)?;
+    database.update_task(task)
+}
 
-    let connection = db::make_connection(configuration)?;
-
-    Ok(tasks.load::<Task>(&connection)
-        .chain_err(|| ErrorKind::Database("while trying to retrieve tasks".to_owned()))?)
+pub fn all(configuration: &Configuration) -> Result<Vec<Task>> {
+    let database = default_database(configuration)?;
+    database.all_tasks()
 }
 
 pub fn schedule(configuration: &Configuration, strategy: &str) -> Result<Schedule> {
     assert!(["importance", "urgency"].contains(&strategy));
 
-    use db::tasks::dsl::tasks;
-
-    let connection = db::make_connection(configuration)?;
-
-    let tasks_ = tasks.load::<Task>(&connection)
-        .chain_err(|| ErrorKind::Database("while trying to retrieve tasks".to_owned()))?;
-
+    let database = default_database(configuration)?;
+    let tasks = database.all_tasks()?;
     let schedule = match strategy {
-        "importance" => Schedule::schedule_according_to_importance(tasks_),
-        "urgency" => Schedule::schedule_according_to_myrjam(tasks_),
+        "importance" => Schedule::schedule_according_to_importance(tasks),
+        "urgency" => Schedule::schedule_according_to_myrjam(tasks),
         _ => unreachable!(),
     }?;
-
     Ok(schedule)
 }
 
-
-pub fn parse_datetime(datetime: &str) -> Result<DateTime<Local>> {
-    Local.datetime_from_str(datetime, "%-d %b %Y %-H:%M")
-        .chain_err(|| {
-            ErrorKind::Parse("deadline".to_owned(),
-                             "Please provide something like '4 Jul 2017 6:05'".to_owned())
-        })
-}
-
-fn parse_importance(importance_str: &str) -> Result<u32> {
-    importance_str.parse()
-        .chain_err(|| ErrorKind::Parse("importance".to_owned(),
-                                       "Please supply a valid integer".to_owned()))
-}
-
-fn parse_duration(duration_hours: &str) -> Result<Duration> {
-    let hours: f64 = duration_hours.parse()
-        .chain_err(|| ErrorKind::Parse("duration".to_owned(),
-                                       "Please supply a valid, real number".to_owned()))?;
-    if hours <= 0.0 {
-        bail!(ErrorKind::Parse("duration".to_owned(),
-                               "Please supply a positive number".to_owned()));
-    }
-    Ok(Duration::minutes((60.0 * hours) as i64))
-}
-
-pub fn parse_std_duration(duration_hours: &str) -> Result<::std::time::Duration> {
-    let hours: f64 = duration_hours.parse()
-        .chain_err(|| ErrorKind::Parse("duration".to_owned(),
-                                       "Please supply a valid, real number".to_owned()))?;
-    if hours <= 0.0 {
-        bail!(ErrorKind::Parse("duration".to_owned(),
-                               "Please supply a positive number".to_owned()));
-    }
-    Ok(::std::time::Duration::from_secs((3600.0 * hours) as u64))
+fn default_database(configuration: &Configuration) -> Result<impl Database> {
+    database::sqlite::make_connection(configuration)
 }

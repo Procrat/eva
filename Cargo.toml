@@ -7,15 +7,13 @@ authors = ["Stijn Seghers <stijnseghers@gmail.com>"]
 app_dirs = "1.1"
 chrono = "0.4"
 clap = "2.26"
-config = "0.7"
-diesel = {version = "0.99", features = ["sqlite"]}
-diesel_migrations = {version = "0.99", features = ["sqlite"]}
+config = "0.8"
+diesel = {version = "1.2", features = ["sqlite"]}
+diesel_migrations = {version = "1.2", features = ["sqlite"]}
 derive-new = "0.5"
-dotenv = "0.10"
-error-chain = "0.10"
-itertools = "0.6"
-lazy_static = "0.2"
-libsqlite3-sys = {version = "0.8.1", features = ["bundled"]}
+error-chain = "0.11"
+itertools = "0.7"
+lazy_static = "1.0"
 shellexpand = "1.0"
 take_mut = "0.2"
 

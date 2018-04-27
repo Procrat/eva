@@ -44,7 +44,7 @@ table! {
 
 embed_migrations!();
 
-no_arg_sql_function!(last_insert_rowid, diesel::types::Integer);
+no_arg_sql_function!(last_insert_rowid, diesel::sql_types::Integer);
 
 
 impl Database for SqliteConnection {

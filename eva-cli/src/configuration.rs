@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use app_dirs;
 use app_dirs::{AppDataType, AppInfo};
 use config;
+use eva;
 use eva::configuration::{Configuration, SchedulingStrategy};
 use shellexpand;
 
@@ -24,6 +25,10 @@ mod errors {
             ShellExpansion(what: String) {
                 description("shell expansion error while reading configuration")
                 display("An error occurred while trying to expand the configuration of {}", what)
+            }
+            DatabaseConnect(path: String) {
+                description("database connection error")
+                display("I could not connect to the database ({})", path)
             }
             Default(what: String) {
                 description("setting defaults error while reading configuration")
@@ -51,22 +56,25 @@ pub fn read() -> Result<Configuration> {
         .merge(config::Environment::with_prefix("eva"))
         .chain_err(|| ErrorKind::Read("environment variables".to_owned()))?;
 
-    let mut configuration = Configuration {
-        database_path: configuration.get_str("database")
-            .chain_err(|| ErrorKind::Read("the database path".to_owned()))?,
-        scheduling_strategy: match configuration.get_str("scheduling_strategy")
-            .chain_err(|| ErrorKind::Read("the scheduling strategy".to_owned()))?.as_str() {
-                "importance" => SchedulingStrategy::Importance,
-                "urgency" => SchedulingStrategy::Urgency,
-                _ => bail!(ErrorKind::Read("the scheduling strategy".to_owned())),
-            },
-    };
+    let database_path = configuration.get_str("database")
+        .chain_err(|| ErrorKind::Read("the database path".to_owned()))?
+        .expand("the database path")?;
+    ensure_exists(&database_path, "the database path")?;
+    let database = connect_to_database(&database_path)?;
 
-    expand(&mut configuration)?;
+    let scheduling_strategy = match
+        configuration.get_str("scheduling_strategy")
+        .chain_err(|| ErrorKind::Read("the scheduling strategy".to_owned()))?
+        .as_str() {
+            "importance" => SchedulingStrategy::Importance,
+            "urgency" => SchedulingStrategy::Urgency,
+            _ => bail!(ErrorKind::Read("the scheduling strategy".to_owned())),
+        };
 
-    ensure_paths_exist(&configuration)?;
-
-    Ok(configuration)
+    Ok(Configuration {
+        database: Box::new(database),
+        scheduling_strategy: scheduling_strategy,
+    })
 }
 
 
@@ -96,18 +104,29 @@ fn set_defaults(configuration: &mut config::Config) -> Result<&mut config::Confi
 }
 
 
-fn expand(configuration: &mut Configuration) -> Result<()> {
-    configuration.database_path = shellexpand::full(&configuration.database_path)
-        .chain_err(|| ErrorKind::ShellExpansion("the database path".to_owned()))?
-        .into_owned();
+trait ShellExpand {
+    fn expand(&self, name: &str) -> Result<String>;
+}
+
+impl ShellExpand for String {
+    fn expand(&self, name: &str) -> Result<String> {
+        Ok(shellexpand::full(self)
+           .chain_err(|| ErrorKind::ShellExpansion(name.to_owned()))?
+           .into_owned())
+    }
+}
+
+
+fn ensure_exists(path: &str, name: &str) -> Result<()> {
+    let database_directory = Path::new(path).parent()
+        .ok_or_else(|| ErrorKind::FileCreation(name.to_owned()))?;
+    fs::create_dir_all(database_directory)
+        .chain_err(|| ErrorKind::FileCreation(name.to_owned()))?;
     Ok(())
 }
 
 
-fn ensure_paths_exist(configuration: &Configuration) -> Result<()> {
-    let database_directory = Path::new(&configuration.database_path).parent()
-        .ok_or_else(|| ErrorKind::FileCreation("the database directory".to_owned()))?;
-    fs::create_dir_all(database_directory)
-        .chain_err(|| ErrorKind::FileCreation("the database directory".to_owned()))?;
-    Ok(())
+fn connect_to_database(path: &str) -> Result<impl eva::database::Database> {
+    Ok(eva::database::sqlite::make_connection(path)
+       .chain_err(|| ErrorKind::DatabaseConnect(path.to_owned()))?)
 }

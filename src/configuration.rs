@@ -1,6 +1,9 @@
+use ::database::Database;
+
+
 #[derive(Debug)]
 pub struct Configuration {
-    pub database_path: String,
+    pub database: Box<Database>,
     pub scheduling_strategy: SchedulingStrategy,
 }
 

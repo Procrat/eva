@@ -6,7 +6,6 @@ use diesel;
 use diesel::prelude::*;
 
 use ::errors::*;
-use ::configuration::Configuration;
 use super::Database;
 
 use self::tasks::dsl::tasks as task_table;
@@ -136,11 +135,7 @@ impl From<::Task> for Task {
 }
 
 
-pub fn make_connection(configuration: &Configuration) -> Result<SqliteConnection> {
-    make_connection_with(&configuration.database_path)
-}
-
-fn make_connection_with(database_url: &str) -> Result<SqliteConnection> {
+pub fn make_connection(database_url: &str) -> Result<SqliteConnection> {
     let connection = SqliteConnection::establish(database_url)
         .chain_err(|| ErrorKind::Database(format!("while trying to connect to {}", database_url)))?;
     // TODO run instead of run_with_output
@@ -157,7 +152,7 @@ mod tests {
 
     #[test]
     fn test_insert_query_and_delete_single_task() {
-        let connection = make_connection_with(":memory:").unwrap();
+        let connection = make_connection(":memory:").unwrap();
 
         // Fresh database has no tasks
         assert_eq!(connection.all_tasks().unwrap().len(), 0);
@@ -184,7 +179,7 @@ mod tests {
 
     #[test]
     fn test_insert_update_query_single_task() {
-        let connection = make_connection_with(":memory:").unwrap();
+        let connection = make_connection(":memory:").unwrap();
 
         let new_task = test_task();
         connection.add_task(new_task).unwrap();

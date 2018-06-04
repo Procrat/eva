@@ -4,19 +4,23 @@ extern crate chrono;
 #[macro_use]
 extern crate derive_new;
 #[macro_use]
-extern crate diesel;
-#[macro_use]
-extern crate diesel_migrations;
-#[macro_use]
 extern crate error_chain;
 extern crate itertools;
 #[macro_use]
 extern crate lazy_static;
 extern crate take_mut;
 
+#[cfg(feature = "sqlite")]
+#[macro_use]
+extern crate diesel;
+#[cfg(feature = "sqlite")]
+#[macro_use]
+extern crate diesel_migrations;
+
 #[cfg(test)]
 #[macro_use]
 extern crate assert_matches;
+
 
 use std::hash::{Hash, Hasher};
 
@@ -27,13 +31,11 @@ use configuration::Configuration;
 
 pub use errors::{Error, ErrorKind, Result, ResultExt};
 pub use scheduling::{Schedule, ScheduledTask};
-use database::Database;
-
 #[macro_use]
 mod util;
 
 pub mod configuration;
-mod database;
+pub mod database;
 mod scheduling;
 
 #[allow(unused_doc_comment)]
@@ -94,43 +96,33 @@ impl Hash for Task {
 
 
 pub fn add(configuration: &Configuration, new_task: NewTask) -> Result<Task> {
-    let database = default_database(configuration)?;
-    database.add_task(new_task)
+    configuration.database.add_task(new_task)
 }
 
 pub fn remove(configuration: &Configuration, id: u32) -> Result<()> {
-    let database = default_database(configuration)?;
-    database.remove_task(id)
+    configuration.database.remove_task(id)
 }
 
 pub fn get(configuration: &Configuration, id: u32) -> Result<Task> {
-    let database = default_database(configuration)?;
-    database.find_task(id)
+    configuration.database.find_task(id)
 }
 
 pub fn update(configuration: &Configuration, task: Task) -> Result<()> {
-    let database = default_database(configuration)?;
-    database.update_task(task)
+    configuration.database.update_task(task)
 }
 
 pub fn all(configuration: &Configuration) -> Result<Vec<Task>> {
-    let database = default_database(configuration)?;
-    database.all_tasks()
+    configuration.database.all_tasks()
 }
 
 pub fn schedule(configuration: &Configuration, strategy: &str) -> Result<Schedule> {
     assert!(["importance", "urgency"].contains(&strategy));
 
-    let database = default_database(configuration)?;
-    let tasks = database.all_tasks()?;
+    let tasks = configuration.database.all_tasks()?;
     let schedule = match strategy {
         "importance" => Schedule::schedule_according_to_importance(tasks),
         "urgency" => Schedule::schedule_according_to_myrjam(tasks),
         _ => unreachable!(),
     }?;
     Ok(schedule)
-}
-
-fn default_database(configuration: &Configuration) -> Result<impl Database> {
-    database::sqlite::make_connection(configuration)
 }

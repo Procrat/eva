@@ -38,8 +38,7 @@ pub mod configuration;
 pub mod database;
 mod scheduling;
 
-#[allow(unused_doc_comment)]
-mod errors {
+pub mod errors {
     use scheduling;
 
     error_chain! {
@@ -119,9 +118,11 @@ pub fn schedule(configuration: &Configuration, strategy: &str) -> Result<Schedul
     assert!(["importance", "urgency"].contains(&strategy));
 
     let tasks = configuration.database.all_tasks()?;
+    let start = configuration.time_context.as_ref()
+        .map_or_else(|| Local::now(), |time_context| time_context.now());
     let schedule = match strategy {
-        "importance" => Schedule::schedule_according_to_importance(tasks),
-        "urgency" => Schedule::schedule_according_to_myrjam(tasks),
+        "importance" => Schedule::schedule_according_to_importance(start, tasks),
+        "urgency" => Schedule::schedule_according_to_myrjam(start, tasks),
         _ => unreachable!(),
     }?;
     Ok(schedule)

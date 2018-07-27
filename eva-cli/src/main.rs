@@ -15,7 +15,6 @@ use errors::*;
 mod configuration;
 mod parse;
 
-#[allow(unused_doc_comment)]
 mod errors {
     use eva;
 

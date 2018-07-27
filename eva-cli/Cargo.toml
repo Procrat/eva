@@ -7,7 +7,7 @@ authors = ["Stijn Seghers <stijnseghers@gmail.com>"]
 app_dirs = "1.1"
 chrono = "0.4"
 clap = "2.26"
-config = "0.8"
-error-chain = "0.11"
+config = "0.9"
+error-chain = "0.12"
 eva = { version = "0.0.1", path = "../", features = ["sqlite"] }
 shellexpand = "1.0"

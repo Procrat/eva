@@ -10,7 +10,6 @@ use shellexpand;
 
 pub use self::errors::*;
 
-#[allow(unused_doc_comment)]
 mod errors {
     error_chain! {
         errors {
@@ -74,6 +73,7 @@ pub fn read() -> Result<Configuration> {
     Ok(Configuration {
         database: Box::new(database),
         scheduling_strategy: scheduling_strategy,
+        time_context: None,
     })
 }
 

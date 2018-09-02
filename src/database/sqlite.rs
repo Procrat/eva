@@ -3,6 +3,8 @@ use std::io;
 use chrono::prelude::*;
 use chrono::Duration;
 use diesel::prelude::*;
+use futures::future;
+use futures::future::LocalFutureObj;
 
 use crate::errors::*;
 use super::Database;
@@ -19,7 +21,7 @@ struct Task {
     pub duration: i32,
     pub importance: i32,
 }
- 
+
 #[derive(Debug, Insertable)]
 #[table_name="tasks"]
 struct NewTask {
@@ -46,52 +48,68 @@ no_arg_sql_function!(last_insert_rowid, diesel::sql_types::Integer);
 
 
 impl Database for SqliteConnection {
-    fn add_task(&self, task: crate::NewTask) -> Result<crate::Task> {
-        diesel::insert_into(task_table)
-            .values(&NewTask::from(task))
-            .execute(self)
-            .chain_err(|| ErrorKind::Database("while trying to add a task".to_owned()))?;
-        let id: i32 = diesel::select(last_insert_rowid)
-            .get_result(self)
-            .chain_err(|| ErrorKind::Database("while trying to fetch the id of the new task".to_owned()))?;
-        self.find_task(id as u32)
+    fn add_task<'a: 'b, 'b>(&'a self, task: crate::NewTask) -> LocalFutureObj<'b, Result<crate::Task>> {
+        let future_task = async move {
+            diesel::insert_into(task_table)
+                .values(&NewTask::from(task))
+                .execute(self)
+                .chain_err(|| ErrorKind::Database(
+                    "while trying to add a task".into()))?;
+            let id = diesel::select(last_insert_rowid)
+                .get_result::<i32>(self)
+                .chain_err(|| ErrorKind::Database(
+                    "while trying to fetch the id of the new task".into()))?;
+            let task = await!(self.find_task(id as u32))
+                .chain_err(|| ErrorKind::Database(
+                    "while trying to fetch the newly created task".into()))?;
+            Ok(task)
+        };
+        LocalFutureObj::new(Box::new(future_task))
     }
 
-    fn remove_task(&self, id: u32) -> Result<()> {
-        let amount_deleted =
-            diesel::delete(task_table.find(id as i32))
+    fn remove_task<'a: 'b, 'b>(&'a self, id: u32) -> LocalFutureObj<'b, Result<()>> {
+        let future = async move {
+            let amount_deleted = diesel::delete(task_table.find(id as i32))
                 .execute(self)
                 .chain_err(|| ErrorKind::Database("while trying to remove a task".to_owned()))?;
-        ensure!(amount_deleted == 1,
-                ErrorKind::Database("while trying to remove a task".to_owned()));
-        Ok(())
+            ensure!(amount_deleted == 1,
+                    ErrorKind::Database("while trying to remove a task".to_owned()));
+            Ok(())
+        };
+        LocalFutureObj::new(Box::new(future))
     }
 
-    fn find_task(&self, id: u32) -> Result<crate::Task> {
-        let db_task: Task = task_table.find(id as i32)
-            .get_result(self)
-            .chain_err(|| ErrorKind::Database("while trying to find a task".to_owned()))?;
-        Ok(crate::Task::from(db_task))
+    fn find_task<'a: 'b, 'b>(&'a self, id: u32) -> LocalFutureObj<'b, Result<crate::Task>> {
+        let task_result = try {
+            let db_task = task_table.find(id as i32)
+                .get_result::<Task>(self)
+                .chain_err(|| ErrorKind::Database("while trying to find a task".to_owned()))?;
+            crate::Task::from(db_task)
+        };
+        LocalFutureObj::new(Box::new(future::ready(task_result)))
     }
 
-    fn update_task(&self, task: crate::Task) -> Result<()> {
+    fn update_task<'a: 'b, 'b>(&'a self, task: crate::Task) -> LocalFutureObj<'b, Result<()>> {
         let db_task = Task::from(task);
-        let amount_updated =
-            diesel::update(&db_task)
+        let future = async move {
+            let amount_updated = diesel::update(&db_task)
                 .set(&db_task)
                 .execute(self)
                 .chain_err(|| ErrorKind::Database("while trying to update a task".to_owned()))?;
-        ensure!(amount_updated == 1,
-                ErrorKind::Database("while trying to remove a task".to_owned()));
-        Ok(())
+            ensure!(amount_updated == 1,
+                    ErrorKind::Database("while trying to remove a task".to_owned()));
+            Ok(())
+        };
+        LocalFutureObj::new(Box::new(future))
     }
 
-    fn all_tasks(&self) -> Result<Vec<crate::Task>> {
-        let db_tasks = task_table.load::<Task>(self)
-            .chain_err(|| ErrorKind::Database("while trying to retrieve tasks".to_owned()))?;
-        Ok(db_tasks.into_iter()
-           .map(|task| crate::Task::from(task))
-           .collect())
+    fn all_tasks<'a: 'b, 'b>(&'a self) -> LocalFutureObj<'b, Result<Vec<crate::Task>>> {
+        let tasks_result = try {
+            let db_tasks = task_table.load::<Task>(self)
+                .chain_err(|| ErrorKind::Database("while trying to retrieve tasks".to_owned()))?;
+            db_tasks.into_iter().map(crate::Task::from).collect()
+        };
+        LocalFutureObj::new(Box::new(future::ready(tasks_result)))
     }
 }
 
@@ -147,6 +165,8 @@ pub fn make_connection(database_url: &str) -> Result<SqliteConnection> {
 
 #[cfg(test)]
 mod tests {
+    use futures::executor::block_on;
+
     use super::*;
 
     #[test]
@@ -154,26 +174,26 @@ mod tests {
         let connection = make_connection(":memory:").unwrap();
 
         // Fresh database has no tasks
-        assert_eq!(connection.all_tasks().unwrap().len(), 0);
+        assert_eq!(block_on(connection.all_tasks()).unwrap().len(), 0);
 
         // Inserting a task and querying for it, returns the same one
         let new_task = test_task();
-        connection.add_task(new_task.clone()).unwrap();
-        let tasks = connection.all_tasks().unwrap();
+        block_on(connection.add_task(new_task.clone())).unwrap();
+        let tasks = block_on(connection.all_tasks()).unwrap();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].content, new_task.content);
         assert_eq!(tasks[0].deadline.timestamp(), new_task.deadline.timestamp());
         assert_eq!(tasks[0].duration, new_task.duration);
         assert_eq!(tasks[0].importance, new_task.importance);
-        let same_task = connection.find_task(tasks[0].id).unwrap();
+        let same_task = block_on(connection.find_task(tasks[0].id)).unwrap();
         assert_eq!(same_task.content, new_task.content);
         assert_eq!(same_task.deadline.timestamp(), new_task.deadline.timestamp());
         assert_eq!(same_task.duration, new_task.duration);
         assert_eq!(same_task.importance, new_task.importance);
 
         // Removing a task leaves the database empty
-        connection.remove_task(tasks[0].id).unwrap();
-        assert!(connection.all_tasks().unwrap().is_empty());
+        block_on(connection.remove_task(tasks[0].id)).unwrap();
+        assert!(block_on(connection.all_tasks()).unwrap().is_empty());
     }
 
     #[test]
@@ -181,9 +201,9 @@ mod tests {
         let connection = make_connection(":memory:").unwrap();
 
         let new_task = test_task();
-        connection.add_task(new_task).unwrap();
+        block_on(connection.add_task(new_task)).unwrap();
 
-        let mut tasks = connection.all_tasks().unwrap();
+        let mut tasks = block_on(connection.all_tasks()).unwrap();
         let mut task = tasks.pop().unwrap();
         let deadline = Local.from_utc_datetime(
             &NaiveDateTime::parse_from_str("2015-09-05 23:56:04", "%Y-%m-%d %H:%M:%S").unwrap());
@@ -191,9 +211,9 @@ mod tests {
         task.deadline = deadline;
         task.duration = Duration::minutes(7);
         task.importance = 100;
-        connection.update_task(task.clone()).unwrap();
+        block_on(connection.update_task(task.clone())).unwrap();
 
-        let task_from_db = connection.find_task(task.id).unwrap();
+        let task_from_db = block_on(connection.find_task(task.id)).unwrap();
         assert_eq!(task, task_from_db);
         assert_eq!(task.content, "stuff");
         assert_eq!(task.deadline, deadline);

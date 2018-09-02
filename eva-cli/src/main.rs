@@ -4,6 +4,7 @@ extern crate error_chain;
 
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 use eva::configuration::Configuration;
+use futures::executor::block_on;
 
 use crate::errors::*;
 
@@ -95,13 +96,13 @@ fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
                 duration: parse::duration(duration)?,
                 importance: parse::importance(importance)?,
             };
-            let _task = eva::add(configuration, new_task)?;
+            let _task = block_on(eva::add(configuration, new_task))?;
             Ok(())
         },
         ("rm", Some(submatches)) => {
             let id = submatches.value_of("task-id").unwrap();
             let id = parse::id(id)?;
-            Ok(eva::remove(configuration, id)?)
+            Ok(block_on(eva::remove(configuration, id))?)
         },
         ("set", Some(submatches)) => {
             let field = submatches.value_of("property").unwrap();
@@ -111,7 +112,7 @@ fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
             Ok(set_field(configuration, field, id, value)?)
         },
         ("tasks", Some(_submatches)) => {
-            let tasks = eva::all(configuration)?;
+            let tasks = block_on(eva::all(configuration))?;
             println!("Tasks:");
             for task in &tasks {
                 println!("  {}", task);
@@ -119,8 +120,8 @@ fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
             Ok(())
         },
         ("schedule", Some(submatches)) => {
-            let strategy = submatches.value_of("strategy").unwrap();
-            let schedule = eva::schedule(configuration, strategy)?;
+            let strategy = submatches.value_of("strategy").unwrap().to_owned();
+            let schedule = block_on(eva::schedule(configuration, &strategy))?;
             println!("{}", schedule);
             Ok(())
         },
@@ -129,7 +130,7 @@ fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
 }
 
 fn set_field(configuration: &Configuration, field: &str, id: u32, value: &str) -> Result<()> {
-    let mut task = eva::get(configuration, id)?;
+    let mut task = block_on(eva::get(configuration, id))?;
     match field {
         "content" => task.content = value.to_string(),
         "deadline" => task.deadline = parse::deadline(value)?,
@@ -137,7 +138,7 @@ fn set_field(configuration: &Configuration, field: &str, id: u32, value: &str) -
         "importance" => task.importance = parse::importance(value)?,
         _ => unreachable!(),
     };
-    Ok(eva::update(configuration, task)?)
+    Ok(block_on(eva::update(configuration, task))?)
 }
 
 fn handle_error(error: &Error) {

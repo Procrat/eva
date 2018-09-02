@@ -1,5 +1,8 @@
 #![feature(box_patterns)]
 #![feature(uniform_paths)]
+#![feature(futures_api)]
+#![feature(async_await, await_macro)]
+#![feature(try_blocks)]
 
 
 #[macro_use]
@@ -18,10 +21,11 @@ use std::hash::{Hash, Hasher};
 use chrono::prelude::*;
 use chrono::Duration;
 use derive_new::new;
+use futures::prelude::*;
 
 use crate::configuration::Configuration;
 
-pub use crate::errors::{Error, ErrorKind, Result, ResultExt};
+pub use crate::errors::*;
 pub use crate::scheduling::{Schedule, ScheduledTask};
 
 #[macro_use]
@@ -87,36 +91,42 @@ impl Hash for Task {
 }
 
 
-pub fn add(configuration: &Configuration, new_task: NewTask) -> Result<Task> {
+pub fn add<'a: 'b, 'b>(configuration: &'a Configuration, new_task: NewTask)
+                       -> impl Future<Output=Result<Task>> + 'b
+{
     configuration.database.add_task(new_task)
 }
 
-pub fn remove(configuration: &Configuration, id: u32) -> Result<()> {
+pub fn remove<'a: 'b, 'b>(configuration: &'a Configuration, id: u32) -> impl Future<Output=Result<()>> + 'b {
     configuration.database.remove_task(id)
 }
 
-pub fn get(configuration: &Configuration, id: u32) -> Result<Task> {
+pub fn get<'a: 'b, 'b>(configuration: &'a Configuration, id: u32) -> impl Future<Output=Result<Task>> + 'b {
     configuration.database.find_task(id)
 }
 
-pub fn update(configuration: &Configuration, task: Task) -> Result<()> {
+pub fn update<'a: 'b, 'b>(configuration: &'a Configuration, task: Task) -> impl Future<Output=Result<()>> + 'b {
     configuration.database.update_task(task)
 }
 
-pub fn all(configuration: &Configuration) -> Result<Vec<Task>> {
+pub fn all<'a: 'b, 'b>(configuration: &'a Configuration) -> impl Future<Output=Result<Vec<Task>>> + 'b {
     configuration.database.all_tasks()
 }
 
-pub fn schedule(configuration: &Configuration, strategy: &str) -> Result<Schedule> {
+pub fn schedule<'a: 'c, 'b: 'c, 'c>(configuration: &'a Configuration, strategy: &'b str)
+    -> impl Future<Output=Result<Schedule>> + 'c
+{
     assert!(["importance", "urgency"].contains(&strategy));
 
-    let tasks = configuration.database.all_tasks()?;
     let start = configuration.time_context.as_ref()
         .map_or_else(|| Local::now(), |time_context| time_context.now());
-    let schedule = match strategy {
-        "importance" => Schedule::schedule_according_to_importance(start, tasks),
-        "urgency" => Schedule::schedule_according_to_myrjam(start, tasks),
-        _ => unreachable!(),
-    }?;
-    Ok(schedule)
+
+    configuration.database.all_tasks()
+        .and_then(move |tasks| {
+            future::ready(match strategy {
+                "importance" => Schedule::schedule_according_to_importance(start, tasks),
+                "urgency" => Schedule::schedule_according_to_myrjam(start, tasks),
+                _ => unreachable!(),
+            }).map_err(Error::from)
+        })
 }

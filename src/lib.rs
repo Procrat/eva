@@ -1,14 +1,9 @@
 #![feature(box_patterns)]
+#![feature(uniform_paths)]
 
-extern crate chrono;
-#[macro_use]
-extern crate derive_new;
+
 #[macro_use]
 extern crate error_chain;
-extern crate itertools;
-#[macro_use]
-extern crate lazy_static;
-extern crate take_mut;
 
 #[cfg(feature = "sqlite")]
 #[macro_use]
@@ -17,20 +12,18 @@ extern crate diesel;
 #[macro_use]
 extern crate diesel_migrations;
 
-#[cfg(test)]
-#[macro_use]
-extern crate assert_matches;
-
 
 use std::hash::{Hash, Hasher};
 
 use chrono::prelude::*;
 use chrono::Duration;
+use derive_new::new;
 
-use configuration::Configuration;
+use crate::configuration::Configuration;
 
-pub use errors::{Error, ErrorKind, Result, ResultExt};
-pub use scheduling::{Schedule, ScheduledTask};
+pub use crate::errors::{Error, ErrorKind, Result, ResultExt};
+pub use crate::scheduling::{Schedule, ScheduledTask};
+
 #[macro_use]
 mod util;
 
@@ -39,7 +32,7 @@ pub mod database;
 mod scheduling;
 
 pub mod errors {
-    use scheduling;
+    use crate::scheduling;
 
     error_chain! {
         links {

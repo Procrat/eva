@@ -1,25 +1,19 @@
-extern crate app_dirs;
-extern crate chrono;
-extern crate clap;
-extern crate config;
-extern crate eva;
 #[macro_use]
 extern crate error_chain;
-extern crate shellexpand;
+
 
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 use eva::configuration::Configuration;
 
-use errors::*;
+use crate::errors::*;
+
 
 mod configuration;
 mod parse;
 
 mod errors {
-    use eva;
-
-    use configuration;
-    use parse;
+    use crate::configuration;
+    use crate::parse;
 
     error_chain! {
         links {

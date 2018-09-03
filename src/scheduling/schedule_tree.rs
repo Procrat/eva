@@ -5,9 +5,7 @@ use std::hash::Hash;
 use std::ops::{Add, Range, Sub};
 use std::rc::Rc;
 
-use take_mut;
-
-use util::WithSideEffects;
+use crate::util::WithSideEffects;
 
 
 #[derive(Debug, Default)]
@@ -667,8 +665,11 @@ impl<T, D> Iterator for IntoIter<T, D>
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::ops::Range;
+
+    use assert_matches::assert_matches;
+
+    use super::*;
 
     #[test]
     fn test_schedule_exact() {

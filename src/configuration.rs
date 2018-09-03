@@ -2,7 +2,7 @@ use std::fmt;
 
 use chrono::{DateTime, Local};
 
-use ::database::Database;
+use crate::database::Database;
 
 
 #[derive(Debug)]

@@ -2,6 +2,7 @@
 name = "eva"
 version = "0.0.1"
 authors = ["Stijn Seghers <stijnseghers@gmail.com>"]
+edition = "2018"
 
 [features]
 default = []

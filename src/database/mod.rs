@@ -1,7 +1,7 @@
 use std::fmt;
 
-use ::{NewTask, Task};
-use ::errors::Result;
+use crate::{NewTask, Task};
+use crate::errors::Result;
 
 
 #[cfg(feature = "sqlite")]

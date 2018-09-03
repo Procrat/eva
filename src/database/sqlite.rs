@@ -2,10 +2,9 @@ use std::io;
 
 use chrono::prelude::*;
 use chrono::Duration;
-use diesel;
 use diesel::prelude::*;
 
-use ::errors::*;
+use crate::errors::*;
 use super::Database;
 
 use self::tasks::dsl::tasks as task_table;
@@ -47,7 +46,7 @@ no_arg_sql_function!(last_insert_rowid, diesel::sql_types::Integer);
 
 
 impl Database for SqliteConnection {
-    fn add_task(&self, task: ::NewTask) -> Result<::Task> {
+    fn add_task(&self, task: crate::NewTask) -> Result<crate::Task> {
         diesel::insert_into(task_table)
             .values(&NewTask::from(task))
             .execute(self)
@@ -68,14 +67,14 @@ impl Database for SqliteConnection {
         Ok(())
     }
 
-    fn find_task(&self, id: u32) -> Result<::Task> {
+    fn find_task(&self, id: u32) -> Result<crate::Task> {
         let db_task: Task = task_table.find(id as i32)
             .get_result(self)
             .chain_err(|| ErrorKind::Database("while trying to find a task".to_owned()))?;
-        Ok(::Task::from(db_task))
+        Ok(crate::Task::from(db_task))
     }
 
-    fn update_task(&self, task: ::Task) -> Result<()> {
+    fn update_task(&self, task: crate::Task) -> Result<()> {
         let db_task = Task::from(task);
         let amount_updated =
             diesel::update(&db_task)
@@ -87,17 +86,17 @@ impl Database for SqliteConnection {
         Ok(())
     }
 
-    fn all_tasks(&self) -> Result<Vec<::Task>> {
+    fn all_tasks(&self) -> Result<Vec<crate::Task>> {
         let db_tasks = task_table.load::<Task>(self)
             .chain_err(|| ErrorKind::Database("while trying to retrieve tasks".to_owned()))?;
         Ok(db_tasks.into_iter()
-           .map(|task| ::Task::from(task))
+           .map(|task| crate::Task::from(task))
            .collect())
     }
 }
 
-impl From<::NewTask> for NewTask {
-    fn from(task: ::NewTask) -> NewTask {
+impl From<crate::NewTask> for NewTask {
+    fn from(task: crate::NewTask) -> NewTask {
         NewTask {
             content: task.content,
             deadline: task.deadline.timestamp() as i32,
@@ -107,12 +106,12 @@ impl From<::NewTask> for NewTask {
     }
 }
 
-impl From<Task> for ::Task {
-    fn from(task: Task) -> ::Task {
+impl From<Task> for crate::Task {
+    fn from(task: Task) -> crate::Task {
         let naive_deadline = NaiveDateTime::from_timestamp(i64::from(task.deadline), 0);
         let deadline = Local.from_utc_datetime(&naive_deadline);
         let duration = Duration::seconds(i64::from(task.duration));
-        ::Task {
+        crate::Task {
             id: task.id as u32,
             content: task.content,
             deadline: deadline,
@@ -122,8 +121,8 @@ impl From<Task> for ::Task {
     }
 }
 
-impl From<::Task> for Task {
-    fn from(task: ::Task) -> Task {
+impl From<crate::Task> for Task {
+    fn from(task: crate::Task) -> Task {
         Task {
             id: task.id as i32,
             content: task.content,
@@ -202,8 +201,8 @@ mod tests {
         assert_eq!(task.importance, 100);
     }
 
-    fn test_task() -> ::NewTask {
-        ::NewTask {
+    fn test_task() -> crate::NewTask {
+        crate::NewTask {
             content: "do me".to_string(),
             deadline: Local::now(),
             duration: Duration::seconds(6),

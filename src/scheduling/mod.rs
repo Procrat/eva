@@ -3,7 +3,9 @@ use std::rc::Rc;
 
 use chrono::prelude::*;
 use chrono::Duration;
+use derive_new::new;
 use itertools::Itertools;
+use lazy_static::lazy_static;
 
 use super::Task;
 use self::schedule_tree::{Entry, ScheduleTree};
@@ -13,7 +15,7 @@ pub use self::errors::*;
 mod schedule_tree;
 
 mod errors {
-    use ::Task;
+    use crate::Task;
 
     error_chain! {
         errors {
@@ -180,7 +182,7 @@ impl Schedule {
 
 impl fmt::Display for Schedule {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(f, "Schedule:\n  "));
+        write!(f, "Schedule:\n  ")?;
         write!(f, "{}", self.0.iter().join("\n  "))
     }
 }
@@ -225,6 +227,8 @@ fn format_duration(duration: Duration) -> String {
 
 #[cfg(test)]
 mod tests {
+    use assert_matches::assert_matches;
+
     use super::*;
 
     macro_rules! test_generic_properties {

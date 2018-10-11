@@ -62,7 +62,7 @@ pub mod errors {
 #[derive(Debug, new, Clone)]
 pub struct NewTask {
     pub content: String,
-    pub deadline: DateTime<Local>,
+    pub deadline: DateTime<Utc>,
     pub duration: Duration,
     pub importance: u32,
 }
@@ -71,7 +71,7 @@ pub struct NewTask {
 pub struct Task {
     pub id: u32,
     pub content: String,
-    pub deadline: DateTime<Local>,
+    pub deadline: DateTime<Utc>,
     pub duration: Duration,
     pub importance: u32,
 }
@@ -118,8 +118,7 @@ pub fn schedule<'a: 'c, 'b: 'c, 'c>(configuration: &'a Configuration, strategy: 
 {
     assert!(["importance", "urgency"].contains(&strategy));
 
-    let start = configuration.time_context.as_ref()
-        .map_or_else(|| Local::now(), |time_context| time_context.now());
+    let start = configuration.now();
 
     configuration.database.all_tasks()
         .and_then(move |tasks| {

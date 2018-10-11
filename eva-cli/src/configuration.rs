@@ -73,7 +73,6 @@ pub fn read() -> Result<Configuration> {
     Ok(Configuration {
         database: Box::new(database),
         scheduling_strategy: scheduling_strategy,
-        time_context: None,
     })
 }
 

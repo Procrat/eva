@@ -48,11 +48,12 @@ pub fn duration(duration_hours: &str) -> Result<Duration> {
     Ok(Duration::minutes((60.0 * hours) as i64))
 }
 
-pub fn deadline(datetime: &str) -> Result<DateTime<Local>> {
+pub fn deadline(datetime: &str) -> Result<DateTime<Utc>> {
     Local.datetime_from_str(datetime, "%-d %b %Y %-H:%M")
         .chain_err(|| ErrorKind::Parse(
             "deadline".to_owned(),
             datetime.to_owned(),
             "Try entering something like '4 Jul 2017 6:05'.".to_owned())
         )
+        .map(|local_datetime| local_datetime.with_timezone(&Utc))
 }

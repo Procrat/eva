@@ -127,7 +127,7 @@ impl From<crate::NewTask> for NewTask {
 impl From<Task> for crate::Task {
     fn from(task: Task) -> crate::Task {
         let naive_deadline = NaiveDateTime::from_timestamp(i64::from(task.deadline), 0);
-        let deadline = Local.from_utc_datetime(&naive_deadline);
+        let deadline = Utc.from_utc_datetime(&naive_deadline);
         let duration = Duration::seconds(i64::from(task.duration));
         crate::Task {
             id: task.id as u32,
@@ -205,7 +205,7 @@ mod tests {
 
         let mut tasks = block_on(connection.all_tasks()).unwrap();
         let mut task = tasks.pop().unwrap();
-        let deadline = Local.from_utc_datetime(
+        let deadline = Utc.from_utc_datetime(
             &NaiveDateTime::parse_from_str("2015-09-05 23:56:04", "%Y-%m-%d %H:%M:%S").unwrap());
         task.content = "stuff".to_string();
         task.deadline = deadline;
@@ -224,7 +224,7 @@ mod tests {
     fn test_task() -> crate::NewTask {
         crate::NewTask {
             content: "do me".to_string(),
-            deadline: Local::now(),
+            deadline: Utc::now(),
             duration: Duration::seconds(6),
             importance: 42,
         }

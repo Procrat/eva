@@ -1,15 +1,24 @@
-use std::fmt;
-
-use chrono::{DateTime, Local};
+use cfg_if::cfg_if;
+use chrono::{DateTime, Utc};
 
 use crate::database::Database;
 
 
-#[derive(Debug)]
-pub struct Configuration {
-    pub database: Box<Database>,
-    pub scheduling_strategy: SchedulingStrategy,
-    pub time_context: Option<Box<TimeContext>>,
+cfg_if! {
+    if #[cfg(feature = "clock")] {
+        #[derive(Debug)]
+        pub struct Configuration {
+            pub database: Box<Database>,
+            pub scheduling_strategy: SchedulingStrategy,
+        }
+    } else {
+        #[derive(Debug)]
+        pub struct Configuration {
+            pub database: Box<Database>,
+            pub scheduling_strategy: SchedulingStrategy,
+            pub time_context: Box<TimeContext>,
+        }
+    }
 }
 
 
@@ -29,18 +38,30 @@ impl SchedulingStrategy {
 }
 
 
-pub trait TimeContext {
-    fn now(&self) -> DateTime<Local>;
-}
+cfg_if! {
+    if #[cfg(feature = "clock")] {
+        impl Configuration {
+            pub fn now(&self) -> DateTime<Utc> {
+                Utc::now()
+            }
+        }
+    } else {
+        use std::fmt;
 
-impl fmt::Debug for TimeContext {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "<time context>")
-    }
-}
+        pub trait TimeContext {
+            fn now(&self) -> DateTime<Utc>;
+        }
 
-impl TimeContext for Local {
-    fn now(&self) -> DateTime<Local> {
-        Local::now()
+        impl fmt::Debug for TimeContext {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "<time context>")
+            }
+        }
+
+        impl Configuration {
+            pub fn now(&self) -> DateTime<Utc> {
+                self.time_context.now()
+            }
+        }
     }
 }

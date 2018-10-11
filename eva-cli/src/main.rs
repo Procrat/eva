@@ -5,12 +5,15 @@ extern crate error_chain;
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 use eva::configuration::Configuration;
 use futures::executor::block_on;
+use itertools::Itertools;
 
 use crate::errors::*;
+use crate::pretty_print::PrettyPrint;
 
 
 mod configuration;
 mod parse;
+mod pretty_print;
 
 mod errors {
     use crate::configuration;
@@ -115,14 +118,15 @@ fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
             let tasks = block_on(eva::all(configuration))?;
             println!("Tasks:");
             for task in &tasks {
-                println!("  {}", task);
+                // Indent all lines of task.pretty_print() by two spaces
+                println!("  {}", task.pretty_print().split("\n").join("\n  "));
             }
             Ok(())
         },
         ("schedule", Some(submatches)) => {
             let strategy = submatches.value_of("strategy").unwrap().to_owned();
             let schedule = block_on(eva::schedule(configuration, &strategy))?;
-            println!("{}", schedule);
+            println!("{}", schedule.pretty_print());
             Ok(())
         },
         _ => unreachable!(),

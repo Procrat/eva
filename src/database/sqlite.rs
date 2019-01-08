@@ -6,14 +6,13 @@ use diesel::prelude::*;
 use futures::future;
 use futures::future::LocalFutureObj;
 
-use crate::errors::*;
 use super::Database;
+use crate::errors::*;
 
 use self::tasks::dsl::tasks as task_table;
 
-
 #[derive(Debug, Clone, PartialEq, Queryable, Identifiable, AsChangeset)]
-#[table_name="tasks"]
+#[table_name = "tasks"]
 struct Task {
     pub id: i32,
     pub content: String,
@@ -23,14 +22,13 @@ struct Task {
 }
 
 #[derive(Debug, Insertable)]
-#[table_name="tasks"]
+#[table_name = "tasks"]
 struct NewTask {
     pub content: String,
     pub deadline: i32,
     pub duration: i32,
     pub importance: i32,
 }
-
 
 table! {
     tasks (id) {
@@ -46,22 +44,24 @@ embed_migrations!();
 
 no_arg_sql_function!(last_insert_rowid, diesel::sql_types::Integer);
 
-
 impl Database for SqliteConnection {
-    fn add_task<'a: 'b, 'b>(&'a self, task: crate::NewTask) -> LocalFutureObj<'b, Result<crate::Task>> {
+    fn add_task<'a: 'b, 'b>(
+        &'a self,
+        task: crate::NewTask,
+    ) -> LocalFutureObj<'b, Result<crate::Task>> {
         let future_task = async move {
             diesel::insert_into(task_table)
                 .values(&NewTask::from(task))
                 .execute(self)
-                .chain_err(|| ErrorKind::Database(
-                    "while trying to add a task".into()))?;
+                .chain_err(|| ErrorKind::Database("while trying to add a task".into()))?;
             let id = diesel::select(last_insert_rowid)
                 .get_result::<i32>(self)
-                .chain_err(|| ErrorKind::Database(
-                    "while trying to fetch the id of the new task".into()))?;
-            let task = await!(self.find_task(id as u32))
-                .chain_err(|| ErrorKind::Database(
-                    "while trying to fetch the newly created task".into()))?;
+                .chain_err(|| {
+                    ErrorKind::Database("while trying to fetch the id of the new task".into())
+                })?;
+            let task = await!(self.find_task(id as u32)).chain_err(|| {
+                ErrorKind::Database("while trying to fetch the newly created task".into())
+            })?;
             Ok(task)
         };
         LocalFutureObj::new(Box::new(future_task))
@@ -72,8 +72,10 @@ impl Database for SqliteConnection {
             let amount_deleted = diesel::delete(task_table.find(id as i32))
                 .execute(self)
                 .chain_err(|| ErrorKind::Database("while trying to remove a task".to_owned()))?;
-            ensure!(amount_deleted == 1,
-                    ErrorKind::Database("while trying to remove a task".to_owned()));
+            ensure!(
+                amount_deleted == 1,
+                ErrorKind::Database("while trying to remove a task".to_owned())
+            );
             Ok(())
         };
         LocalFutureObj::new(Box::new(future))
@@ -81,7 +83,8 @@ impl Database for SqliteConnection {
 
     fn find_task<'a: 'b, 'b>(&'a self, id: u32) -> LocalFutureObj<'b, Result<crate::Task>> {
         let task_result = try {
-            let db_task = task_table.find(id as i32)
+            let db_task = task_table
+                .find(id as i32)
                 .get_result::<Task>(self)
                 .chain_err(|| ErrorKind::Database("while trying to find a task".to_owned()))?;
             crate::Task::from(db_task)
@@ -96,8 +99,10 @@ impl Database for SqliteConnection {
                 .set(&db_task)
                 .execute(self)
                 .chain_err(|| ErrorKind::Database("while trying to update a task".to_owned()))?;
-            ensure!(amount_updated == 1,
-                    ErrorKind::Database("while trying to remove a task".to_owned()));
+            ensure!(
+                amount_updated == 1,
+                ErrorKind::Database("while trying to remove a task".to_owned())
+            );
             Ok(())
         };
         LocalFutureObj::new(Box::new(future))
@@ -105,7 +110,8 @@ impl Database for SqliteConnection {
 
     fn all_tasks<'a: 'b, 'b>(&'a self) -> LocalFutureObj<'b, Result<Vec<crate::Task>>> {
         let tasks_result = try {
-            let db_tasks = task_table.load::<Task>(self)
+            let db_tasks = task_table
+                .load::<Task>(self)
                 .chain_err(|| ErrorKind::Database("while trying to retrieve tasks".to_owned()))?;
             db_tasks.into_iter().map(crate::Task::from).collect()
         };
@@ -132,8 +138,8 @@ impl From<Task> for crate::Task {
         crate::Task {
             id: task.id as u32,
             content: task.content,
-            deadline: deadline,
-            duration: duration,
+            deadline,
+            duration,
             importance: task.importance as u32,
         }
     }
@@ -151,17 +157,15 @@ impl From<crate::Task> for Task {
     }
 }
 
-
 pub fn make_connection(database_url: &str) -> Result<SqliteConnection> {
-    let connection = SqliteConnection::establish(database_url)
-        .chain_err(|| ErrorKind::Database(format!("while trying to connect to {}", database_url)))?;
+    let connection = SqliteConnection::establish(database_url).chain_err(|| {
+        ErrorKind::Database(format!("while trying to connect to {}", database_url))
+    })?;
     // TODO run instead of run_with_output
     embedded_migrations::run_with_output(&connection, &mut io::stderr())
         .chain_err(|| ErrorKind::Database("while running migrations".to_owned()))?;
     Ok(connection)
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -187,7 +191,10 @@ mod tests {
         assert_eq!(tasks[0].importance, new_task.importance);
         let same_task = block_on(connection.find_task(tasks[0].id)).unwrap();
         assert_eq!(same_task.content, new_task.content);
-        assert_eq!(same_task.deadline.timestamp(), new_task.deadline.timestamp());
+        assert_eq!(
+            same_task.deadline.timestamp(),
+            new_task.deadline.timestamp()
+        );
         assert_eq!(same_task.duration, new_task.duration);
         assert_eq!(same_task.importance, new_task.importance);
 
@@ -206,7 +213,8 @@ mod tests {
         let mut tasks = block_on(connection.all_tasks()).unwrap();
         let mut task = tasks.pop().unwrap();
         let deadline = Utc.from_utc_datetime(
-            &NaiveDateTime::parse_from_str("2015-09-05 23:56:04", "%Y-%m-%d %H:%M:%S").unwrap());
+            &NaiveDateTime::parse_from_str("2015-09-05 23:56:04", "%Y-%m-%d %H:%M:%S").unwrap(),
+        );
         task.content = "stuff".to_string();
         task.deadline = deadline;
         task.duration = Duration::minutes(7);

@@ -2,13 +2,11 @@ use std::fmt;
 
 use futures::future::LocalFutureObj;
 
-use crate::{NewTask, Task};
 use crate::errors::*;
-
+use crate::{NewTask, Task};
 
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
-
 
 pub trait Database {
     fn add_task<'a: 'b, 'b>(&'a self, task: NewTask) -> LocalFutureObj<'b, Result<Task>>;

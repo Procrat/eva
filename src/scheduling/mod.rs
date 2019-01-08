@@ -6,8 +6,8 @@ use chrono::Duration;
 use derive_new::new;
 use lazy_static::lazy_static;
 
-use super::Task;
 use self::schedule_tree::{Entry, ScheduleTree};
+use super::Task;
 
 pub use self::errors::*;
 
@@ -44,7 +44,6 @@ lazy_static! {
     static ref SCHEDULE_DELAY: Duration = Duration::minutes(1);
 }
 
-
 #[derive(Debug, new)]
 pub struct ScheduledTask {
     pub task: Task,
@@ -67,7 +66,8 @@ impl Schedule {
     /// time.
     #[allow(dead_code)]
     pub fn schedule<I>(start: DateTime<Utc>, tasks: I) -> Result<Schedule>
-        where I: IntoIterator<Item=Task>
+    where
+        I: IntoIterator<Item = Task>,
     {
         Schedule::schedule_according_to_importance(start, tasks)
     }
@@ -83,7 +83,8 @@ impl Schedule {
     /// This algorithm has a terrible performance at the moment and it doesn't work right when the
     /// lengths of the tasks aren't about the same, but it will do for now.
     pub fn schedule_according_to_importance<I>(start: DateTime<Utc>, tasks: I) -> Result<Schedule>
-        where I: IntoIterator<Item=Task>
+    where
+        I: IntoIterator<Item = Task>,
     {
         let mut tree: ScheduleTree<DateTime<Utc>, Rc<Task>> = ScheduleTree::new();
         // Make sure things aren't scheduled before the algorithm is finished.
@@ -93,9 +94,17 @@ impl Schedule {
         tasks.sort_by_key(|task| (task.importance, start.signed_duration_since(task.deadline)));
         for task in &tasks {
             if task.deadline <= start + task.duration {
-                bail!(ErrorKind::DeadlineMissed((**task).clone(), task.deadline <= start));
+                bail!(ErrorKind::DeadlineMissed(
+                    (**task).clone(),
+                    task.deadline <= start
+                ));
             }
-            if ! tree.schedule_close_before(task.deadline, task.duration, Some(start), Rc::clone(task)) {
+            if !tree.schedule_close_before(
+                task.deadline,
+                task.duration,
+                Some(start),
+                Rc::clone(task),
+            ) {
                 bail!(ErrorKind::NotEnoughTime((**task).clone()));
             }
         }
@@ -105,16 +114,22 @@ impl Schedule {
         while changed {
             changed = false;
             for task in tasks.iter().rev() {
-                let scheduled_entry = tree.unschedule(task)
-                    .ok_or_else(|| ErrorKind::Internal(
-                            "I couldn't unschedule a task".to_owned()))?;
-                if ! tree.schedule_close_after(start, task.duration, Some(scheduled_entry.end),
-                                               scheduled_entry.data) {
-                    bail!(ErrorKind::Internal("I couldn't reschedule a task".to_owned()));
+                let scheduled_entry = tree.unschedule(task).ok_or_else(|| {
+                    ErrorKind::Internal("I couldn't unschedule a task".to_owned())
+                })?;
+                if !tree.schedule_close_after(
+                    start,
+                    task.duration,
+                    Some(scheduled_entry.end),
+                    scheduled_entry.data,
+                ) {
+                    bail!(ErrorKind::Internal(
+                        "I couldn't reschedule a task".to_owned()
+                    ));
                 }
-                let new_start = tree.when_scheduled(task)
-                    .ok_or_else(|| ErrorKind::Internal(
-                            "I couldn't find a task that was just scheduled".to_owned()))?;
+                let new_start = tree.when_scheduled(task).ok_or_else(|| {
+                    ErrorKind::Internal("I couldn't find a task that was just scheduled".to_owned())
+                })?;
                 if scheduled_entry.start != *new_start {
                     changed = true;
                     break;
@@ -135,7 +150,8 @@ impl Schedule {
     /// disadvantage is that it gives more priority to urgent but less important tasks than to
     /// important but less urgent tasks.
     pub fn schedule_according_to_myrjam<I>(start: DateTime<Utc>, tasks: I) -> Result<Schedule>
-        where I: IntoIterator<Item=Task>
+    where
+        I: IntoIterator<Item = Task>,
     {
         let mut tree: ScheduleTree<DateTime<Utc>, Rc<Task>> = ScheduleTree::new();
         // Make sure things aren't scheduled before the algorithm is finished.
@@ -145,9 +161,17 @@ impl Schedule {
         tasks.sort_by_key(|task| task.importance);
         for task in tasks {
             if task.deadline <= start + task.duration {
-                bail!(ErrorKind::DeadlineMissed((*task).clone(), task.deadline <= start));
+                bail!(ErrorKind::DeadlineMissed(
+                    (*task).clone(),
+                    task.deadline <= start
+                ));
             }
-            if ! tree.schedule_close_before(task.deadline, task.duration, Some(start), Rc::clone(&task)) {
+            if !tree.schedule_close_before(
+                task.deadline,
+                task.duration,
+                Some(start),
+                Rc::clone(&task),
+            ) {
                 bail!(ErrorKind::NotEnoughTime((*task).clone()));
             }
         }
@@ -161,31 +185,33 @@ impl Schedule {
             });
         }
         for entry in entries {
-            let scheduled_entry = tree.unschedule(&entry.data)
+            let scheduled_entry = tree
+                .unschedule(&entry.data)
                 .ok_or_else(|| ErrorKind::Internal("I couldn't unschedule a task".to_owned()))?;
             let task = scheduled_entry.data;
-            if ! tree.schedule_close_after(start, task.duration, Some(scheduled_entry.end), task) {
-                bail!(ErrorKind::Internal("I couldn't reschedule a task".to_owned()));
+            if !tree.schedule_close_after(start, task.duration, Some(scheduled_entry.end), task) {
+                bail!(ErrorKind::Internal(
+                    "I couldn't reschedule a task".to_owned()
+                ));
             }
         }
         Ok(Schedule::tree_to_schedule(tree))
     }
 
     fn tree_to_schedule(tree: ScheduleTree<DateTime<Utc>, Rc<Task>>) -> Schedule {
-        let scheduled_tasks = tree.into_iter()
+        let scheduled_tasks = tree
+            .into_iter()
             .map(|entry| ScheduledTask::new((*entry.data).clone(), entry.start))
             .collect();
         Schedule(scheduled_tasks)
     }
 }
 
-
 impl fmt::Display for Task {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.content)
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -208,7 +234,8 @@ mod tests {
                                 assert!(tasks.contains(&scheduled_task.task));
                             }
                             for task in tasks {
-                                assert!(schedule.0.iter().any(|scheduled_task| scheduled_task.task == task));
+                                assert!(schedule.0.iter()
+                                        .any(|scheduled_task| scheduled_task.task == task));
                             }
                         }
                     }
@@ -415,7 +442,8 @@ mod tests {
     #[test]
     fn schedule_myrjams_schedule_by_importance() {
         let tasks = taskset_of_myrjam();
-        let schedule = Schedule::schedule_according_to_importance(Utc::now(), tasks.clone()).unwrap();
+        let schedule =
+            Schedule::schedule_according_to_importance(Utc::now(), tasks.clone()).unwrap();
         let mut expected_when = Utc::now() + *SCHEDULE_DELAY;
         // 5. Make dentist appointment, 10m, 5, in 7 days
         assert_eq!(schedule.0[0].task, tasks[5]);
@@ -449,28 +477,28 @@ mod tests {
                 content: "Think of plan to get rid of The Ring".to_string(),
                 deadline: Utc::now() + Duration::days(12) + Duration::hours(15),
                 duration: Duration::days(2),
-                importance: 9
+                importance: 9,
             },
             Task {
                 id: 1,
                 content: "Ask advice from Saruman".to_string(),
                 deadline: Utc::now() + Duration::days(8) + Duration::hours(15),
                 duration: Duration::days(3),
-                importance: 4
+                importance: 4,
             },
             Task {
                 id: 2,
                 content: "Visit Bilbo in Rivendel".to_string(),
                 deadline: Utc::now() + Duration::days(13) + Duration::hours(15),
                 duration: Duration::days(2),
-                importance: 2
+                importance: 2,
             },
             Task {
                 id: 3,
                 content: "Make some firework for the hobbits".to_string(),
                 deadline: Utc::now() + Duration::hours(33),
                 duration: Duration::hours(3),
-                importance: 3
+                importance: 3,
             },
             Task {
                 id: 4,
@@ -484,28 +512,28 @@ mod tests {
                 content: "Find some good pipe-weed".to_string(),
                 deadline: Utc::now() + Duration::days(2) + Duration::hours(15),
                 duration: Duration::hours(1),
-                importance: 8
+                importance: 8,
             },
             Task {
                 id: 6,
                 content: "Go shop for white clothing".to_string(),
                 deadline: Utc::now() + Duration::days(33) + Duration::hours(15),
                 duration: Duration::hours(2),
-                importance: 3
+                importance: 3,
             },
             Task {
                 id: 7,
                 content: "Prepare epic-sounding one-liners".to_string(),
                 deadline: Utc::now() + Duration::hours(34),
                 duration: Duration::hours(2),
-                importance: 10
+                importance: 10,
             },
             Task {
                 id: 8,
                 content: "Recharge staff batteries".to_string(),
                 deadline: Utc::now() + Duration::days(1) + Duration::hours(15),
                 duration: Duration::minutes(30),
-                importance: 5
+                importance: 5,
             },
         ]
     }
@@ -513,7 +541,8 @@ mod tests {
     #[test]
     fn schedule_gandalfs_schedule_by_importance() {
         let tasks = taskset_of_gandalf();
-        let schedule = Schedule::schedule_according_to_importance(Utc::now(), tasks.clone()).unwrap();
+        let schedule =
+            Schedule::schedule_according_to_importance(Utc::now(), tasks.clone()).unwrap();
         let mut expected_when = Utc::now() + *SCHEDULE_DELAY;
         // 7. Prepare epic-sounding one-liners
         assert_eq!(schedule.0[0].task, tasks[7]);
@@ -607,7 +636,6 @@ mod tests {
     }
 
     fn are_approx_equal(datetime1: DateTime<Utc>, datetime2: DateTime<Utc>) -> bool {
-        datetime1 < datetime2 + Duration::seconds(2)
-            && datetime2 < datetime1 + Duration::seconds(2)
+        datetime1 < datetime2 + Duration::seconds(2) && datetime2 < datetime1 + Duration::seconds(2)
     }
 }

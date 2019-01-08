@@ -3,7 +3,6 @@ use chrono::{DateTime, Utc};
 
 use crate::database::Database;
 
-
 cfg_if! {
     if #[cfg(feature = "clock")] {
         #[derive(Debug)]
@@ -21,7 +20,6 @@ cfg_if! {
     }
 }
 
-
 #[derive(Debug)]
 pub enum SchedulingStrategy {
     Importance,
@@ -36,7 +34,6 @@ impl SchedulingStrategy {
         }
     }
 }
-
 
 cfg_if! {
     if #[cfg(feature = "clock")] {

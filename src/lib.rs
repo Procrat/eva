@@ -3,7 +3,6 @@
 #![feature(async_await, await_macro)]
 #![feature(try_blocks)]
 
-
 #[macro_use]
 extern crate error_chain;
 
@@ -13,7 +12,6 @@ extern crate diesel;
 #[cfg(feature = "sqlite")]
 #[macro_use]
 extern crate diesel_migrations;
-
 
 use std::hash::{Hash, Hasher};
 
@@ -75,56 +73,71 @@ pub struct Task {
     pub importance: u32,
 }
 
-
 // Hack because chrono::Duration doesn't implement the Hash trait.
 impl Hash for Task {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state);
         self.content.hash(state);
         self.deadline.hash(state);
-        self.duration.to_std()
-            .expect(&format!("Internal error: duration of {} was negative", self))
+        self.duration
+            .to_std()
+            .expect(&format!(
+                "Internal error: duration of {} was negative",
+                self
+            ))
             .hash(state);
         self.importance.hash(state);
     }
 }
 
-
-pub fn add<'a: 'b, 'b>(configuration: &'a Configuration, new_task: NewTask)
-                       -> impl Future<Output=Result<Task>> + 'b
-{
+pub fn add<'a: 'b, 'b>(
+    configuration: &'a Configuration,
+    new_task: NewTask,
+) -> impl Future<Output = Result<Task>> + 'b {
     configuration.database.add_task(new_task)
 }
 
-pub fn remove<'a: 'b, 'b>(configuration: &'a Configuration, id: u32) -> impl Future<Output=Result<()>> + 'b {
+pub fn remove<'a: 'b, 'b>(
+    configuration: &'a Configuration,
+    id: u32,
+) -> impl Future<Output = Result<()>> + 'b {
     configuration.database.remove_task(id)
 }
 
-pub fn get<'a: 'b, 'b>(configuration: &'a Configuration, id: u32) -> impl Future<Output=Result<Task>> + 'b {
+pub fn get<'a: 'b, 'b>(
+    configuration: &'a Configuration,
+    id: u32,
+) -> impl Future<Output = Result<Task>> + 'b {
     configuration.database.find_task(id)
 }
 
-pub fn update<'a: 'b, 'b>(configuration: &'a Configuration, task: Task) -> impl Future<Output=Result<()>> + 'b {
+pub fn update<'a: 'b, 'b>(
+    configuration: &'a Configuration,
+    task: Task,
+) -> impl Future<Output = Result<()>> + 'b {
     configuration.database.update_task(task)
 }
 
-pub fn all<'a: 'b, 'b>(configuration: &'a Configuration) -> impl Future<Output=Result<Vec<Task>>> + 'b {
+pub fn all<'a: 'b, 'b>(
+    configuration: &'a Configuration,
+) -> impl Future<Output = Result<Vec<Task>>> + 'b {
     configuration.database.all_tasks()
 }
 
-pub fn schedule<'a: 'c, 'b: 'c, 'c>(configuration: &'a Configuration, strategy: &'b str)
-    -> impl Future<Output=Result<Schedule>> + 'c
-{
+pub fn schedule<'a: 'c, 'b: 'c, 'c>(
+    configuration: &'a Configuration,
+    strategy: &'b str,
+) -> impl Future<Output = Result<Schedule>> + 'c {
     assert!(["importance", "urgency"].contains(&strategy));
 
     let start = configuration.now();
 
-    configuration.database.all_tasks()
-        .and_then(move |tasks| {
-            future::ready(match strategy {
-                "importance" => Schedule::schedule_according_to_importance(start, tasks),
-                "urgency" => Schedule::schedule_according_to_myrjam(start, tasks),
-                _ => unreachable!(),
-            }).map_err(Error::from)
+    configuration.database.all_tasks().and_then(move |tasks| {
+        future::ready(match strategy {
+            "importance" => Schedule::schedule_according_to_importance(start, tasks),
+            "urgency" => Schedule::schedule_according_to_myrjam(start, tasks),
+            _ => unreachable!(),
         })
+        .map_err(Error::from)
+    })
 }

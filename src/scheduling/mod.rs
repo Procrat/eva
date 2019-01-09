@@ -6,8 +6,10 @@ use chrono::Duration;
 use derive_new::new;
 use lazy_static::lazy_static;
 
+use crate::configuration::SchedulingStrategy;
+use crate::Task;
+
 use self::schedule_tree::{Entry, ScheduleTree};
-use super::Task;
 
 pub use self::errors::*;
 
@@ -54,24 +56,50 @@ pub struct ScheduledTask {
 pub struct Schedule(pub Vec<ScheduledTask>);
 
 impl Schedule {
-    /// Schedules tasks according to their deadlines, importance and duration.
-    ///
-    /// The exact algorithm might change in the future. Currently importance scheduling is being
-    /// used. See `schedule_according_to_importance` for more details.
+    /// Schedules tasks according to the given strategy, using the tasks'
+    /// deadlines, importance and duration.
     ///
     /// Args:
     ///     start: the moment when the first task can be scheduled
     ///     tasks: iterable of tasks to schedule
-    /// Returns an instance of Schedule which contains all tasks, each bound to certain date and
-    /// time.
-    #[allow(dead_code)]
-    pub fn schedule<I>(start: DateTime<Utc>, tasks: I) -> Result<Schedule>
+    ///     strategy: the scheduling algorithm to use
+    /// Returns when successful an instance of Schedule which contains all
+    /// tasks, each bound to a certain date and time; returns None when not all
+    /// tasks could be scheduled.
+    pub fn schedule<I>(
+        start: DateTime<Utc>,
+        tasks: I,
+        strategy: SchedulingStrategy,
+    ) -> Result<Schedule>
     where
         I: IntoIterator<Item = Task>,
     {
-        Schedule::schedule_according_to_importance(start, tasks)
+        let mut tree: ScheduleTree<DateTime<Utc>, Rc<Task>> = ScheduleTree::new();
+        // Make sure things aren't scheduled before the algorithm is finished.
+        let start = start + *SCHEDULE_DELAY;
+        let tasks: Vec<Rc<Task>> = tasks.into_iter().map(Rc::new).collect();
+        match strategy {
+            SchedulingStrategy::Importance => tree.schedule_according_to_importance(start, tasks),
+            SchedulingStrategy::Urgency => tree.schedule_according_to_myrjam(start, tasks),
+        }?;
+        Ok(Schedule::from_tree(tree))
     }
 
+    fn from_tree(tree: ScheduleTree<DateTime<Utc>, Rc<Task>>) -> Schedule {
+        let scheduled_tasks = tree
+            .into_iter()
+            .map(|entry| ScheduledTask::new((*entry.data).clone(), entry.start))
+            .collect();
+        Schedule(scheduled_tasks)
+    }
+}
+
+trait TaskScheduler {
+    fn schedule_according_to_importance(&mut self, start: DateTime<Utc>, tasks: Vec<Rc<Task>>) -> Result<()>;
+    fn schedule_according_to_myrjam(&mut self, start: DateTime<Utc>, tasks: Vec<Rc<Task>>) -> Result<()>;
+}
+
+impl TaskScheduler for ScheduleTree<DateTime<Utc>, Rc<Task>> {
     /// Schedules `tasks` according to importance while making sure all deadlines are met.
     ///
     /// First, all tasks --- starting with the least important until the most important --- are
@@ -82,15 +110,8 @@ impl Schedule {
     ///
     /// This algorithm has a terrible performance at the moment and it doesn't work right when the
     /// lengths of the tasks aren't about the same, but it will do for now.
-    pub fn schedule_according_to_importance<I>(start: DateTime<Utc>, tasks: I) -> Result<Schedule>
-    where
-        I: IntoIterator<Item = Task>,
-    {
-        let mut tree: ScheduleTree<DateTime<Utc>, Rc<Task>> = ScheduleTree::new();
-        // Make sure things aren't scheduled before the algorithm is finished.
-        let start = start + *SCHEDULE_DELAY;
+    fn schedule_according_to_importance(&mut self, start: DateTime<Utc>, mut tasks: Vec<Rc<Task>>) -> Result<()> {
         // Start by scheduling the least important tasks closest to the deadline, and so on.
-        let mut tasks: Vec<Rc<Task>> = tasks.into_iter().map(Rc::new).collect::<Vec<_>>();
         tasks.sort_by_key(|task| (task.importance, start.signed_duration_since(task.deadline)));
         for task in &tasks {
             if task.deadline <= start + task.duration {
@@ -99,7 +120,7 @@ impl Schedule {
                     task.deadline <= start
                 ));
             }
-            if !tree.schedule_close_before(
+            if !self.schedule_close_before(
                 task.deadline,
                 task.duration,
                 Some(start),
@@ -110,14 +131,14 @@ impl Schedule {
         }
         // Next, shift the most important tasks towards today, and so on, filling up the gaps.
         // Keep repeating that, until nothing changes anymore (i.e. all gaps are filled).
-        let mut changed = !tree.is_empty();
+        let mut changed = !self.is_empty();
         while changed {
             changed = false;
             for task in tasks.iter().rev() {
-                let scheduled_entry = tree.unschedule(task).ok_or_else(|| {
+                let scheduled_entry = self.unschedule(task).ok_or_else(|| {
                     ErrorKind::Internal("I couldn't unschedule a task".to_owned())
                 })?;
-                if !tree.schedule_close_after(
+                if !self.schedule_close_after(
                     start,
                     task.duration,
                     Some(scheduled_entry.end),
@@ -127,7 +148,7 @@ impl Schedule {
                         "I couldn't reschedule a task".to_owned()
                     ));
                 }
-                let new_start = tree.when_scheduled(task).ok_or_else(|| {
+                let new_start = self.when_scheduled(task).ok_or_else(|| {
                     ErrorKind::Internal("I couldn't find a task that was just scheduled".to_owned())
                 })?;
                 if scheduled_entry.start != *new_start {
@@ -136,7 +157,7 @@ impl Schedule {
                 }
             }
         }
-        Ok(Schedule::tree_to_schedule(tree))
+        Ok(())
     }
 
     /// Schedules `tasks` according to deadline first and then according to importance.
@@ -149,15 +170,8 @@ impl Schedule {
     /// it this way, is that it is highly robust against contingencies like falling sick. A
     /// disadvantage is that it gives more priority to urgent but less important tasks than to
     /// important but less urgent tasks.
-    pub fn schedule_according_to_myrjam<I>(start: DateTime<Utc>, tasks: I) -> Result<Schedule>
-    where
-        I: IntoIterator<Item = Task>,
-    {
-        let mut tree: ScheduleTree<DateTime<Utc>, Rc<Task>> = ScheduleTree::new();
-        // Make sure things aren't scheduled before the algorithm is finished.
-        let start = start + *SCHEDULE_DELAY;
+    fn schedule_according_to_myrjam(&mut self, start: DateTime<Utc>, mut tasks: Vec<Rc<Task>>) -> Result<()> {
         // Start by scheduling the least important tasks closest to the deadline, and so on.
-        let mut tasks: Vec<Rc<Task>> = tasks.into_iter().map(Rc::new).collect::<Vec<_>>();
         tasks.sort_by_key(|task| task.importance);
         for task in tasks {
             if task.deadline <= start + task.duration {
@@ -166,7 +180,7 @@ impl Schedule {
                     task.deadline <= start
                 ));
             }
-            if !tree.schedule_close_before(
+            if !self.schedule_close_before(
                 task.deadline,
                 task.duration,
                 Some(start),
@@ -177,7 +191,7 @@ impl Schedule {
         }
         // Next, shift the all tasks towards the present, filling up the gaps.
         let mut entries = vec![];
-        for entry in tree.iter() {
+        for entry in self.iter() {
             entries.push(Entry {
                 start: entry.start,
                 end: entry.end,
@@ -185,25 +199,17 @@ impl Schedule {
             });
         }
         for entry in entries {
-            let scheduled_entry = tree
+            let scheduled_entry = self
                 .unschedule(&entry.data)
                 .ok_or_else(|| ErrorKind::Internal("I couldn't unschedule a task".to_owned()))?;
             let task = scheduled_entry.data;
-            if !tree.schedule_close_after(start, task.duration, Some(scheduled_entry.end), task) {
+            if !self.schedule_close_after(start, task.duration, Some(scheduled_entry.end), task) {
                 bail!(ErrorKind::Internal(
                     "I couldn't reschedule a task".to_owned()
                 ));
             }
         }
-        Ok(Schedule::tree_to_schedule(tree))
-    }
-
-    fn tree_to_schedule(tree: ScheduleTree<DateTime<Utc>, Rc<Task>>) -> Schedule {
-        let scheduled_tasks = tree
-            .into_iter()
-            .map(|entry| ScheduledTask::new((*entry.data).clone(), entry.start))
-            .collect();
-        Schedule(scheduled_tasks)
+        Ok(())
     }
 }
 
@@ -220,15 +226,15 @@ mod tests {
     use super::*;
 
     macro_rules! test_generic_properties {
-        ($($algorithm_name:ident: $schedule_fn:expr,)*) => {
+        ($($strategy_name:ident: $strategy:expr,)*) => {
             $(
-                mod $algorithm_name {
+                mod $strategy_name {
                     use super::*;
 
                     #[test]
                     fn all_tasks_are_scheduled() {
                         for tasks in vec![taskset_of_myrjam(), taskset_just_in_time()] {
-                            let schedule = $schedule_fn(Utc::now(), tasks.clone()).unwrap();
+                            let schedule = Schedule::schedule(Utc::now(), tasks.clone(), $strategy).unwrap();
                             assert_eq!(tasks.len(), schedule.0.len());
                             for scheduled_task in schedule.0.iter() {
                                 assert!(tasks.contains(&scheduled_task.task));
@@ -243,7 +249,7 @@ mod tests {
                     #[test]
                     fn tasks_are_in_scheduled_in_time() {
                         for tasks in vec![taskset_of_myrjam(), taskset_just_in_time()] {
-                            let schedule = $schedule_fn(Utc::now(), tasks.clone()).unwrap();
+                            let schedule = Schedule::schedule(Utc::now(), tasks.clone(), $strategy).unwrap();
                             for scheduled_task in schedule.0.iter() {
                                 assert!(scheduled_task.when <= scheduled_task.task.deadline);
                             }
@@ -253,7 +259,7 @@ mod tests {
                     #[test]
                     fn schedule_just_in_time() {
                         let tasks = taskset_just_in_time();
-                        let schedule = $schedule_fn(Utc::now(), tasks.clone()).unwrap();
+                        let schedule = Schedule::schedule(Utc::now(), tasks.clone(), $strategy).unwrap();
                         assert_eq!(schedule.0[0].task, tasks[0]);
                         assert_eq!(schedule.0[1].task, tasks[1]);
                         assert!(are_approx_equal(schedule.0[0].when,
@@ -281,7 +287,7 @@ mod tests {
                         }];
                         // Normal scheduling
                         {
-                            let schedule = $schedule_fn(Utc::now(), tasks.clone()).unwrap();
+                            let schedule = Schedule::schedule(Utc::now(), tasks.clone(), $strategy).unwrap();
                             assert_eq!(schedule.0[0].task, tasks[0]);
                             assert_eq!(schedule.0[1].task, tasks[1]);
                         }
@@ -291,14 +297,14 @@ mod tests {
                         tasks[0].importance = 5;
                         tasks[1].importance = 6;
                         {
-                            let schedule = $schedule_fn(Utc::now(), tasks.clone()).unwrap();
+                            let schedule = Schedule::schedule(Utc::now(), tasks.clone(), $strategy).unwrap();
                             assert_eq!(schedule.0[0].task, tasks[0]);
                             assert_eq!(schedule.0[1].task, tasks[1]);
                         }
 
                         // Leveling the deadlines should make the more important task be scheduled first again.
                         tasks[0].deadline = Utc::now() + Duration::hours(3);
-                        let schedule = $schedule_fn(Utc::now(), tasks.clone()).unwrap();
+                        let schedule = Schedule::schedule(Utc::now(), tasks.clone(), $strategy).unwrap();
                         assert_eq!(schedule.0[0].task, tasks[1]);
                         assert_eq!(schedule.0[1].task, tasks[0]);
                     }
@@ -306,28 +312,28 @@ mod tests {
                     #[test]
                     fn no_schedule() {
                         let tasks = vec![];
-                        let schedule = $schedule_fn(Utc::now(), tasks).unwrap();
+                        let schedule = Schedule::schedule(Utc::now(), tasks, $strategy).unwrap();
                         assert!(schedule.0.is_empty());
                     }
 
                     #[test]
                     fn missed_deadline() {
                         let tasks = taskset_with_missed_deadline();
-                        assert_matches!($schedule_fn(Utc::now(), tasks),
+                        assert_matches!(Schedule::schedule(Utc::now(), tasks, $strategy),
                                         Err(Error(ErrorKind::DeadlineMissed(_, true), _)));
                     }
 
                     #[test]
                     fn impossible_deadline() {
                         let tasks = taskset_with_impossible_deadline();
-                        assert_matches!($schedule_fn(Utc::now(), tasks),
+                        assert_matches!(Schedule::schedule(Utc::now(), tasks, $strategy),
                                         Err(Error(ErrorKind::DeadlineMissed(_, false), _)));
                     }
 
                     #[test]
                     fn out_of_time() {
                         let tasks = taskset_impossible_combination();
-                        assert_matches!($schedule_fn(Utc::now(), tasks),
+                        assert_matches!(Schedule::schedule(Utc::now(), tasks, $strategy),
                                         Err(Error(ErrorKind::NotEnoughTime(_), _)));
                     }
                 }
@@ -336,9 +342,8 @@ mod tests {
     }
 
     test_generic_properties! {
-        importance: Schedule::schedule_according_to_importance,
-        urgency: Schedule::schedule_according_to_myrjam,
-        default: Schedule::schedule,
+        importance: SchedulingStrategy::Importance,
+        urgency: SchedulingStrategy::Urgency,
     }
 
     // Note that some of these task sets are not representative at all, since tasks should be small
@@ -412,7 +417,8 @@ mod tests {
     #[test]
     fn schedule_for_myrjam() {
         let tasks = taskset_of_myrjam();
-        let schedule = Schedule::schedule_according_to_myrjam(Utc::now(), tasks.clone()).unwrap();
+        let schedule =
+            Schedule::schedule(Utc::now(), tasks.clone(), SchedulingStrategy::Urgency).unwrap();
         let mut expected_when = Utc::now() + *SCHEDULE_DELAY;
         // 1. Make onion soup, 1h, 3, in 2 hours
         assert_eq!(schedule.0[0].task, tasks[1]);
@@ -443,7 +449,7 @@ mod tests {
     fn schedule_myrjams_schedule_by_importance() {
         let tasks = taskset_of_myrjam();
         let schedule =
-            Schedule::schedule_according_to_importance(Utc::now(), tasks.clone()).unwrap();
+            Schedule::schedule(Utc::now(), tasks.clone(), SchedulingStrategy::Importance).unwrap();
         let mut expected_when = Utc::now() + *SCHEDULE_DELAY;
         // 5. Make dentist appointment, 10m, 5, in 7 days
         assert_eq!(schedule.0[0].task, tasks[5]);
@@ -542,7 +548,7 @@ mod tests {
     fn schedule_gandalfs_schedule_by_importance() {
         let tasks = taskset_of_gandalf();
         let schedule =
-            Schedule::schedule_according_to_importance(Utc::now(), tasks.clone()).unwrap();
+            Schedule::schedule(Utc::now(), tasks.clone(), SchedulingStrategy::Importance).unwrap();
         let mut expected_when = Utc::now() + *SCHEDULE_DELAY;
         // 7. Prepare epic-sounding one-liners
         assert_eq!(schedule.0[0].task, tasks[7]);

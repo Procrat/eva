@@ -20,7 +20,7 @@ use chrono::Duration;
 use derive_new::new;
 use futures::prelude::*;
 
-use crate::configuration::Configuration;
+use crate::configuration::{Configuration, SchedulingStrategy};
 
 pub use crate::errors::*;
 pub use crate::scheduling::{Schedule, ScheduledTask};
@@ -128,16 +128,14 @@ pub fn schedule<'a: 'c, 'b: 'c, 'c>(
     configuration: &'a Configuration,
     strategy: &'b str,
 ) -> impl Future<Output = Result<Schedule>> + 'c {
-    assert!(["importance", "urgency"].contains(&strategy));
-
+    let strategy = match strategy {
+        "importance" => SchedulingStrategy::Importance,
+        "urgency" => SchedulingStrategy::Urgency,
+        _ => panic!("Unsupported scheduling strategy provided"),
+    };
     let start = configuration.now();
 
     configuration.database.all_tasks().and_then(move |tasks| {
-        future::ready(match strategy {
-            "importance" => Schedule::schedule_according_to_importance(start, tasks),
-            "urgency" => Schedule::schedule_according_to_myrjam(start, tasks),
-            _ => unreachable!(),
-        })
-        .map_err(Error::from)
+        future::ready(Schedule::schedule(start, tasks, strategy)).map_err(Error::from)
     })
 }

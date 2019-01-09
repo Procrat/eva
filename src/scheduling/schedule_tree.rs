@@ -134,7 +134,7 @@ where
             .scope
             .as_ref()
             .cloned()
-            .expect("Internl error: scope could not be taken as ref");
+            .expect("Internal error: scope could not be taken as ref");
         if min_start.map_or(true, |min_start| min_start <= scope.start - duration) {
             // Schedule on [scope.start - duration, scope.start]
             let start = scope.start - duration;
@@ -238,44 +238,37 @@ where
     fn try_schedule_trivial_cases(&mut self, start: T, end: T, data: Rc<D>) -> Option<T> {
         let new_node = Node::Leaf { start, end, data };
 
-        if self.root.is_none() {
-            self.root = Some(new_node);
-            self.scope = Some(start..end);
-            return Some(start);
+        match (self.root.take(), self.scope.take()) {
+            (None, None) => {
+                self.root = Some(new_node);
+                self.scope = Some(start..end);
+                Some(start)
+            }
+            (Some(root), Some(scope)) => {
+                if end <= scope.start {
+                    self.root = Some(Node::Intermediate {
+                        left: Box::new(new_node),
+                        right: Box::new(root),
+                        free: end..scope.start,
+                    });
+                    self.scope = Some(start..scope.end);
+                    Some(start)
+                } else if scope.end <= start {
+                    self.root = Some(Node::Intermediate {
+                        left: Box::new(root),
+                        right: Box::new(new_node),
+                        free: scope.end..start,
+                    });
+                    self.scope = Some(scope.start..end);
+                    Some(start)
+                } else {
+                    self.root = Some(root);
+                    self.scope = Some(scope);
+                    None
+                }
+            }
+            _ => unreachable!(),
         }
-
-        let scope = self
-            .scope
-            .as_ref()
-            .cloned()
-            .expect("Internal error: scope could not be taken as ref");
-        if end <= scope.start {
-            let root = self
-                .root
-                .take()
-                .expect("Internal error: root could not be taken");
-            self.root = Some(Node::Intermediate {
-                left: Box::new(new_node),
-                right: Box::new(root),
-                free: end..scope.start,
-            });
-            self.scope = Some(start..scope.end);
-            return Some(start);
-        } else if scope.end <= start {
-            let root = self
-                .root
-                .take()
-                .expect("Internal error: root could not be taken");
-            self.root = Some(Node::Intermediate {
-                left: Box::new(root),
-                right: Box::new(new_node),
-                free: scope.end..start,
-            });
-            self.scope = Some(scope.start..end);
-            return Some(start);
-        }
-
-        None
     }
 
     /// Removes the given data from the schedule tree.
@@ -336,13 +329,9 @@ where
     ///
     /// Returns the start of the scheduling if it succeeded, otherwise None
     fn insert(&mut self, start: T, end: T, data: Rc<D>) -> Option<T> {
-        match *self {
+        match self {
             Node::Leaf { .. } => None,
-            Node::Intermediate {
-                ref mut left,
-                ref mut right,
-                ref mut free,
-            } => {
+            Node::Intermediate { left, right, free } => {
                 if end <= free.start {
                     left.insert(start, end, data)
                 } else if free.end <= start {
@@ -375,13 +364,9 @@ where
         T: Sub<W, Output = T>,
         W: Copy + Debug,
     {
-        match *self {
+        match self {
             Node::Leaf { .. } => None,
-            Node::Intermediate {
-                ref mut left,
-                ref mut right,
-                ref mut free,
-            } => {
+            Node::Intermediate { left, right, free } => {
                 // If the end is inside the right child, try that first
                 if free.end < end {
                     return_on_some!(right.insert_before(end, duration, min_start, Rc::clone(&data)))
@@ -421,13 +406,9 @@ where
         T: Ord + Add<W, Output = T>,
         W: Copy + Debug,
     {
-        match *self {
+        match self {
             Node::Leaf { .. } => None,
-            Node::Intermediate {
-                ref mut left,
-                ref mut right,
-                ref mut free,
-            } => {
+            Node::Intermediate { left, right, free } => {
                 // If the start is inside the left child, try that first
                 if start < free.start {
                     return_on_some!(left.insert_after(start, duration, max_end, Rc::clone(&data)))
@@ -450,7 +431,7 @@ where
         }
     }
 
-    /// Tries to unschedule certain data a certain start.
+    /// Tries to unschedule the given `data` which is scheduled at the given `start`.
     ///
     /// Returns None if that combination wasn't found, otherwise a tuple of an entry representing
     /// the unscheduled item and the new scope of this node.
@@ -458,17 +439,17 @@ where
     where
         D: PartialEq,
     {
-        // This code is horrible. How can I fix this while maintain interior mutability?
-
-        match *self {
+        match self {
             Node::Leaf { .. } => panic!("Internal error: `unschedule` called on a leaf node"),
-            Node::Intermediate { .. } => {
-                if start < self.unchecked_free_ref().start {
-                    match *self.unchecked_left_ref() {
-                        Node::Leaf { .. } => {
-                            if start == *self.unchecked_left_ref().unchecked_start_ref()
-                                && *data == **self.unchecked_left_ref().unchecked_data_ref()
-                            {
+            Node::Intermediate { left, right, free } => {
+                if start < free.start {
+                    match left {
+                        box Node::Leaf {
+                            start: left_start,
+                            data: left_data,
+                            ..
+                        } => {
+                            if start == *left_start && *data == **left_data {
                                 let mut entry = None;
                                 take_mut::take(self, |self_| match self_ {
                                     Node::Intermediate {
@@ -486,21 +467,21 @@ where
                                 None
                             }
                         }
-                        Node::Intermediate { .. } => {
-                            self.unchecked_left_mut().unschedule(start, data).map(
-                                |(entry, scope)| {
-                                    self.unchecked_free_mut().start = scope.end;
-                                    (entry, self.find_scope()) // FIXME too naive
-                                },
-                            )
+                        box Node::Intermediate { .. } => {
+                            left.unschedule(start, data).map(|(entry, scope)| {
+                                free.start = scope.end;
+                                (entry, scope.start..right.find_scope().end)
+                            })
                         }
                     }
-                } else if self.unchecked_free_ref().end <= start {
-                    match *self.unchecked_right_ref() {
-                        Node::Leaf { .. } => {
-                            if start == *self.unchecked_right_ref().unchecked_start_ref()
-                                && *data == **self.unchecked_right_ref().unchecked_data_ref()
-                            {
+                } else if free.end <= start {
+                    match right {
+                        box Node::Leaf {
+                            start: right_start,
+                            data: right_data,
+                            ..
+                        } => {
+                            if start == *right_start && *data == **right_data {
                                 let mut entry = None;
                                 take_mut::take(self, |self_| match self_ {
                                     Node::Intermediate {
@@ -518,13 +499,11 @@ where
                                 None
                             }
                         }
-                        Node::Intermediate { .. } => {
-                            self.unchecked_right_mut().unschedule(start, data).map(
-                                |(entry, scope)| {
-                                    self.unchecked_free_mut().end = scope.start;
-                                    (entry, self.find_scope()) // FIXME too naive
-                                },
-                            )
+                        box Node::Intermediate { .. } => {
+                            right.unschedule(start, data).map(|(entry, scope)| {
+                                free.end = scope.start;
+                                (entry, left.find_scope().start..scope.end)
+                            })
                         }
                     }
                 } else {
@@ -536,103 +515,12 @@ where
 
     /// Calculates the scope of all descendants of this node.
     fn find_scope(&self) -> Range<T> {
-        match *self {
-            Node::Leaf { start, end, .. } => start..end,
-            Node::Intermediate {
-                ref left,
-                ref right,
-                ..
-            } => {
+        match self {
+            Node::Leaf { start, end, .. } => *start..*end,
+            Node::Intermediate { left, right, .. } => {
                 let start = left.find_scope().start;
                 let end = right.find_scope().end;
                 start..end
-            }
-        }
-    }
-
-    // From here on there will be a bunch of helper methods, because either I don't understand Rust
-    // well enough or because destructuring enums and borrowing doesn't work well together and this
-    // is the only way to overcome that. If enum variants were types, this would all be solved, I
-    // think. IIRC, there is an old RFC for that.
-    //
-    // At the moment, they are only necessary for `unschedule`.
-
-    /// Assume `self` is an intermediate node and return a reference to the left child.
-    fn unchecked_left_ref(&self) -> &Node<T, D> {
-        match *self {
-            Node::Leaf { .. } => {
-                panic!("Internal error: `unchecked_left_ref` called on a leaf node")
-            }
-            Node::Intermediate { ref left, .. } => left,
-        }
-    }
-
-    /// Assume `self` is an intermediate node and return a mutable reference to the left child.
-    fn unchecked_left_mut(&mut self) -> &mut Node<T, D> {
-        match *self {
-            Node::Leaf { .. } => {
-                panic!("Internal error: `unchecked_left_mut` called on a leaf node")
-            }
-            Node::Intermediate { ref mut left, .. } => left,
-        }
-    }
-
-    /// Assume `self` is an intermediate node and return a reference to the right child.
-    fn unchecked_right_ref(&self) -> &Node<T, D> {
-        match *self {
-            Node::Leaf { .. } => {
-                panic!("Internal error: `unchecked_right_ref` called on a leaf node")
-            }
-            Node::Intermediate { ref right, .. } => right,
-        }
-    }
-
-    /// Assume `self` is an intermediate node and return a mutable reference to the right child.
-    fn unchecked_right_mut(&mut self) -> &mut Node<T, D> {
-        match *self {
-            Node::Leaf { .. } => {
-                panic!("Internal error: `unchecked_right_mut` called on a leaf node")
-            }
-            Node::Intermediate { ref mut right, .. } => right,
-        }
-    }
-
-    /// Assume `self` is an intermediate node and return a reference to the free range.
-    fn unchecked_free_ref(&self) -> &Range<T> {
-        match *self {
-            Node::Leaf { .. } => {
-                panic!("Internal error: `unchecked_free_ref` called on a leaf node")
-            }
-            Node::Intermediate { ref free, .. } => free,
-        }
-    }
-
-    /// Assume `self` is an intermediate node and return a mutable reference to the free range.
-    fn unchecked_free_mut(&mut self) -> &mut Range<T> {
-        match *self {
-            Node::Leaf { .. } => {
-                panic!("Internal error: `unchecked_free_mut` called on a leaf node")
-            }
-            Node::Intermediate { ref mut free, .. } => free,
-        }
-    }
-
-    /// Assume `self` is a leaf node and return a reference to the start.
-    fn unchecked_start_ref(&self) -> &T {
-        match *self {
-            Node::Leaf { ref start, .. } => start,
-            Node::Intermediate { .. } => {
-                panic!("Internal error: `unchecked_start_ref` called on an intermediate node")
-            }
-        }
-    }
-
-    /// Assume `self` is a leaf node and return a reference to the data.
-    fn unchecked_data_ref(&self) -> &Rc<D> {
-        match *self {
-            Node::Leaf { ref data, .. } => data,
-            Node::Intermediate { .. } => {
-                panic!("Internal error: `unchecked_data_ref` called on an intermediate node")
             }
         }
     }
@@ -720,24 +608,14 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         self.path.pop().and_then(|mut current: &'a Node<T, D>| {
-            while let Node::Intermediate {
-                ref left,
-                ref right,
-                ..
-            } = *current
-            {
-                self.path.push(&**right);
+            while let Node::Intermediate { left, right, .. } = current {
+                self.path.push(right);
                 current = left;
             }
-            if let Node::Leaf {
-                start,
-                end,
-                ref data,
-            } = *current
-            {
+            if let Node::Leaf { start, end, data } = current {
                 Some(Entry {
-                    start,
-                    end,
+                    start: *start,
+                    end: *end,
                     data: data.as_ref(),
                 })
             } else {

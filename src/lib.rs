@@ -13,12 +13,15 @@ extern crate diesel;
 #[macro_use]
 extern crate diesel_migrations;
 
+use std::collections::HashMap;
+
 use chrono::prelude::*;
 use chrono::Duration;
 use derive_new::new;
 use futures::prelude::*;
 
 use crate::configuration::{Configuration, SchedulingStrategy};
+use crate::time_segment::TimeSegment;
 
 pub use crate::errors::*;
 pub use crate::scheduling::{Schedule, ScheduledTask};
@@ -29,6 +32,7 @@ mod util;
 pub mod configuration;
 pub mod database;
 mod scheduling;
+mod time_segment;
 
 pub mod errors {
     use crate::scheduling;
@@ -38,10 +42,6 @@ pub mod errors {
             Schedule(scheduling::Error, scheduling::ErrorKind);
         }
         errors {
-            Parse(what: String, how_it_should_be: String) {
-                description("parse error")
-                display("I could not parse the {}. {}", what, how_it_should_be)
-            }
             Database(when: String) {
                 description("database error")
                 display("A database error occurred {}", when)
@@ -117,6 +117,14 @@ pub fn schedule<'a: 'c, 'b: 'c, 'c>(
     let start = configuration.now();
 
     configuration.database.all_tasks().and_then(move |tasks| {
-        future::ready(Schedule::schedule(start, tasks, strategy)).map_err(Error::from)
+        let mut tasks_per_segment = HashMap::new();
+        let anytime = TimeSegment {
+            ranges: vec![start..start + Duration::weeks(1)],
+            start,
+            period: Duration::weeks(1),
+        };
+        tasks_per_segment.insert(anytime, tasks);
+        let schedule = Schedule::schedule(start, tasks_per_segment, strategy);
+        future::ready(schedule).map_err(Error::from)
     })
 }

@@ -20,7 +20,7 @@ cfg_if! {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum SchedulingStrategy {
     Importance,
     Urgency,

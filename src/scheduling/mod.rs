@@ -3,10 +3,11 @@ use std::rc::Rc;
 
 use chrono::prelude::*;
 use chrono::Duration;
-use derive_new::new;
+use itertools::Itertools;
 use lazy_static::lazy_static;
 
 use crate::configuration::SchedulingStrategy;
+use crate::time_segment::TimeSegment;
 use crate::Task;
 
 use self::schedule_tree::{Entry, ScheduleTree};
@@ -46,13 +47,22 @@ lazy_static! {
     static ref SCHEDULE_DELAY: Duration = Duration::minutes(1);
 }
 
-#[derive(Debug, new)]
+#[derive(Debug, PartialEq)]
 pub struct ScheduledTask {
     pub task: Task,
     pub when: DateTime<Utc>,
 }
 
-#[derive(Debug)]
+impl std::cmp::PartialOrd for ScheduledTask {
+    fn partial_cmp(&self, other: &ScheduledTask) -> Option<std::cmp::Ordering> {
+        match self.when.cmp(&other.when) {
+            std::cmp::Ordering::Equal => None,
+            strict_ordering => Some(strict_ordering),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct Schedule(pub Vec<ScheduledTask>);
 
 impl Schedule {
@@ -63,43 +73,118 @@ impl Schedule {
     ///     start: the moment when the first task can be scheduled
     ///     tasks: iterable of tasks to schedule
     ///     strategy: the scheduling algorithm to use
+    ///     time_segment: the time segment to schedule the tasks within
     /// Returns when successful an instance of Schedule which contains all
     /// tasks, each bound to a certain date and time; returns None when not all
     /// tasks could be scheduled.
-    pub fn schedule<I>(
+    pub fn schedule(
         start: DateTime<Utc>,
-        tasks: I,
+        tasks_per_segment: impl IntoIterator<Item = (TimeSegment, impl IntoIterator<Item = Task>)>,
         strategy: SchedulingStrategy,
-    ) -> Result<Schedule>
-    where
-        I: IntoIterator<Item = Task>,
-    {
-        let mut tree: ScheduleTree<DateTime<Utc>, Rc<Task>> = ScheduleTree::new();
-        // Make sure things aren't scheduled before the algorithm is finished.
-        let start = start + *SCHEDULE_DELAY;
-        let tasks: Vec<Rc<Task>> = tasks.into_iter().map(Rc::new).collect();
-        match strategy {
-            SchedulingStrategy::Importance => tree.schedule_according_to_importance(start, tasks),
-            SchedulingStrategy::Urgency => tree.schedule_according_to_myrjam(start, tasks),
-        }?;
-        Ok(Schedule::from_tree(tree))
+    ) -> Result<Schedule> {
+        tasks_per_segment
+            .into_iter()
+            .map(|(segment, tasks)| {
+                Schedule::schedule_within_segment(start, tasks, segment, strategy)
+            })
+            .fold(
+                Ok(Schedule::default()),
+                |acc_schedule, new_schedule| match (acc_schedule, new_schedule) {
+                    (Err(error), _) => Err(error),
+                    (_, Err(error)) => Err(error),
+                    (Ok(acc_schedule), Ok(new_schedule)) => Ok(Schedule(
+                        itertools::merge(acc_schedule.0, new_schedule.0).collect_vec(),
+                    )),
+                },
+            )
     }
 
-    fn from_tree(tree: ScheduleTree<DateTime<Utc>, Rc<Task>>) -> Schedule {
+    fn schedule_within_segment(
+        start: DateTime<Utc>,
+        tasks: impl IntoIterator<Item = Task>,
+        segment: TimeSegment,
+        strategy: SchedulingStrategy,
+    ) -> Result<Schedule> {
+        let tasks: Vec<Rc<Task>> = tasks.into_iter().map(Rc::new).collect();
+        if tasks.is_empty() {
+            Ok(Schedule::default())
+        } else {
+            let mut tree: ScheduleTree<DateTime<Utc>, Item> = ScheduleTree::new();
+            // Make sure things aren't scheduled before the algorithm is finished.
+            let start = start + *SCHEDULE_DELAY;
+            let last_deadline = tasks
+                .iter()
+                .map(|task| task.deadline)
+                .max()
+                .expect("Internal error: last deadline not found");
+            let unscheduleables = segment.inverse().generate_ranges(start, last_deadline);
+            for unscheduleable in unscheduleables {
+                tree.schedule_exact(
+                    unscheduleable.start,
+                    unscheduleable.end - unscheduleable.start,
+                    Item::Nothing,
+                );
+            }
+            match strategy {
+                SchedulingStrategy::Importance => {
+                    tree.schedule_according_to_importance(start, tasks)
+                }
+                SchedulingStrategy::Urgency => tree.schedule_according_to_myrjam(start, tasks),
+            }?;
+            Ok(Schedule::from_tree(tree))
+        }
+    }
+
+    fn from_tree(tree: ScheduleTree<DateTime<Utc>, Item>) -> Schedule {
         let scheduled_tasks = tree
             .into_iter()
-            .map(|entry| ScheduledTask::new((*entry.data).clone(), entry.start))
+            .filter_map(|entry| match entry.data {
+                Item::Nothing => None,
+                Item::Task(task) => Some(ScheduledTask {
+                    task: (*task).clone(),
+                    when: entry.start,
+                }),
+            })
             .collect();
         Schedule(scheduled_tasks)
     }
 }
 
-trait TaskScheduler {
-    fn schedule_according_to_importance(&mut self, start: DateTime<Utc>, tasks: Vec<Rc<Task>>) -> Result<()>;
-    fn schedule_according_to_myrjam(&mut self, start: DateTime<Utc>, tasks: Vec<Rc<Task>>) -> Result<()>;
+#[derive(Debug, Hash, Clone)]
+enum Item {
+    Task(Rc<Task>),
+    Nothing,
 }
 
-impl TaskScheduler for ScheduleTree<DateTime<Utc>, Rc<Task>> {
+impl PartialEq for Item {
+    fn eq(&self, other: &Item) -> bool {
+        match (self, other) {
+            (Item::Task(task), Item::Task(other)) => task.eq(other),
+            _ => false,
+        }
+    }
+}
+
+// HACK: We're lying here. According to our implementation of PartialEq, the
+// equivalence relation not reflexive for Nothing. The ScheduleTree needs it for
+// its internal hash map which it uses for data lookups. So this hack will cause
+// e.g. all Nothings to be un-unscheduleable.
+impl Eq for Item {}
+
+trait TaskScheduler {
+    fn schedule_according_to_importance(
+        &mut self,
+        start: DateTime<Utc>,
+        tasks: Vec<Rc<Task>>,
+    ) -> Result<()>;
+    fn schedule_according_to_myrjam(
+        &mut self,
+        start: DateTime<Utc>,
+        tasks: Vec<Rc<Task>>,
+    ) -> Result<()>;
+}
+
+impl TaskScheduler for ScheduleTree<DateTime<Utc>, Item> {
     /// Schedules `tasks` according to importance while making sure all deadlines are met.
     ///
     /// First, all tasks --- starting with the least important until the most important --- are
@@ -110,7 +195,11 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Rc<Task>> {
     ///
     /// This algorithm has a terrible performance at the moment and it doesn't work right when the
     /// lengths of the tasks aren't about the same, but it will do for now.
-    fn schedule_according_to_importance(&mut self, start: DateTime<Utc>, mut tasks: Vec<Rc<Task>>) -> Result<()> {
+    fn schedule_according_to_importance(
+        &mut self,
+        start: DateTime<Utc>,
+        mut tasks: Vec<Rc<Task>>,
+    ) -> Result<()> {
         // Start by scheduling the least important tasks closest to the deadline, and so on.
         tasks.sort_by_key(|task| (task.importance, start.signed_duration_since(task.deadline)));
         for task in &tasks {
@@ -124,7 +213,7 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Rc<Task>> {
                 task.deadline,
                 task.duration,
                 Some(start),
-                Rc::clone(task),
+                Item::Task(Rc::clone(task)),
             ) {
                 bail!(ErrorKind::NotEnoughTime((**task).clone()));
             }
@@ -135,9 +224,10 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Rc<Task>> {
         while changed {
             changed = false;
             for task in tasks.iter().rev() {
-                let scheduled_entry = self.unschedule(task).ok_or_else(|| {
-                    ErrorKind::Internal("I couldn't unschedule a task".to_owned())
-                })?;
+                let scheduled_entry =
+                    self.unschedule(&Item::Task(task.clone())).ok_or_else(|| {
+                        ErrorKind::Internal("I couldn't unschedule a task".to_owned())
+                    })?;
                 if !self.schedule_close_after(
                     start,
                     task.duration,
@@ -148,9 +238,13 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Rc<Task>> {
                         "I couldn't reschedule a task".to_owned()
                     ));
                 }
-                let new_start = self.when_scheduled(task).ok_or_else(|| {
-                    ErrorKind::Internal("I couldn't find a task that was just scheduled".to_owned())
-                })?;
+                let new_start =
+                    self.when_scheduled(&Item::Task(task.clone()))
+                        .ok_or_else(|| {
+                            ErrorKind::Internal(
+                                "I couldn't find a task that was just scheduled".to_owned(),
+                            )
+                        })?;
                 if scheduled_entry.start != *new_start {
                     changed = true;
                     break;
@@ -170,7 +264,11 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Rc<Task>> {
     /// it this way, is that it is highly robust against contingencies like falling sick. A
     /// disadvantage is that it gives more priority to urgent but less important tasks than to
     /// important but less urgent tasks.
-    fn schedule_according_to_myrjam(&mut self, start: DateTime<Utc>, mut tasks: Vec<Rc<Task>>) -> Result<()> {
+    fn schedule_according_to_myrjam(
+        &mut self,
+        start: DateTime<Utc>,
+        mut tasks: Vec<Rc<Task>>,
+    ) -> Result<()> {
         // Start by scheduling the least important tasks closest to the deadline, and so on.
         tasks.sort_by_key(|task| task.importance);
         for task in tasks {
@@ -184,29 +282,35 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Rc<Task>> {
                 task.deadline,
                 task.duration,
                 Some(start),
-                Rc::clone(&task),
+                Item::Task(Rc::clone(&task)),
             ) {
                 bail!(ErrorKind::NotEnoughTime((*task).clone()));
             }
         }
         // Next, shift the all tasks towards the present, filling up the gaps.
-        let mut entries = vec![];
-        for entry in self.iter() {
-            entries.push(Entry {
+        let entries = self
+            .iter()
+            .map(|entry| Entry {
                 start: entry.start,
                 end: entry.end,
-                data: Rc::clone(entry.data),
-            });
-        }
+                data: (*entry.data).clone(),
+            })
+            .collect::<Vec<_>>();
         for entry in entries {
-            let scheduled_entry = self
-                .unschedule(&entry.data)
-                .ok_or_else(|| ErrorKind::Internal("I couldn't unschedule a task".to_owned()))?;
-            let task = scheduled_entry.data;
-            if !self.schedule_close_after(start, task.duration, Some(scheduled_entry.end), task) {
-                bail!(ErrorKind::Internal(
-                    "I couldn't reschedule a task".to_owned()
-                ));
+            if let Item::Task(ref task) = entry.data {
+                let scheduled_entry = self.unschedule(&entry.data).ok_or_else(|| {
+                    ErrorKind::Internal("I couldn't unschedule a task".to_owned())
+                })?;
+                if !self.schedule_close_after(
+                    start,
+                    task.duration,
+                    Some(scheduled_entry.end),
+                    scheduled_entry.data,
+                ) {
+                    bail!(ErrorKind::Internal(
+                        "I couldn't reschedule a task".to_owned()
+                    ));
+                }
             }
         }
         Ok(())
@@ -225,16 +329,40 @@ mod tests {
 
     use super::*;
 
+    fn anytime() -> TimeSegment {
+        let start = Utc::now();
+        let period = Duration::weeks(1);
+        TimeSegment {
+            ranges: vec![start..start + period],
+            start,
+            period,
+        }
+    }
+
+    fn never() -> TimeSegment {
+        TimeSegment {
+            ranges: vec![],
+            start: Utc::now(),
+            period: Duration::weeks(1),
+        }
+    }
+
     macro_rules! test_generic_properties {
         ($($strategy_name:ident: $strategy:expr,)*) => {
             $(
                 mod $strategy_name {
                     use super::*;
 
+                    /// Schedules the given tasks starting now in a time segment
+                    /// without gaps.
+                    fn schedule(tasks: Vec<Task>) -> Result<Schedule> {
+                        Schedule::schedule_within_segment(Utc::now(), tasks, anytime(), $strategy)
+                    }
+
                     #[test]
                     fn all_tasks_are_scheduled() {
                         for tasks in vec![taskset_of_myrjam(), taskset_just_in_time()] {
-                            let schedule = Schedule::schedule(Utc::now(), tasks.clone(), $strategy).unwrap();
+                            let schedule = schedule(tasks.clone()).unwrap();
                             assert_eq!(tasks.len(), schedule.0.len());
                             for scheduled_task in schedule.0.iter() {
                                 assert!(tasks.contains(&scheduled_task.task));
@@ -249,7 +377,7 @@ mod tests {
                     #[test]
                     fn tasks_are_in_scheduled_in_time() {
                         for tasks in vec![taskset_of_myrjam(), taskset_just_in_time()] {
-                            let schedule = Schedule::schedule(Utc::now(), tasks.clone(), $strategy).unwrap();
+                            let schedule = schedule(tasks).unwrap();
                             for scheduled_task in schedule.0.iter() {
                                 assert!(scheduled_task.when <= scheduled_task.task.deadline);
                             }
@@ -259,7 +387,7 @@ mod tests {
                     #[test]
                     fn schedule_just_in_time() {
                         let tasks = taskset_just_in_time();
-                        let schedule = Schedule::schedule(Utc::now(), tasks.clone(), $strategy).unwrap();
+                        let schedule = schedule(tasks.clone()).unwrap();
                         assert_eq!(schedule.0[0].task, tasks[0]);
                         assert_eq!(schedule.0[1].task, tasks[1]);
                         assert!(are_approx_equal(schedule.0[0].when,
@@ -287,7 +415,7 @@ mod tests {
                         }];
                         // Normal scheduling
                         {
-                            let schedule = Schedule::schedule(Utc::now(), tasks.clone(), $strategy).unwrap();
+                            let schedule = schedule(tasks.clone()).unwrap();
                             assert_eq!(schedule.0[0].task, tasks[0]);
                             assert_eq!(schedule.0[1].task, tasks[1]);
                         }
@@ -297,14 +425,14 @@ mod tests {
                         tasks[0].importance = 5;
                         tasks[1].importance = 6;
                         {
-                            let schedule = Schedule::schedule(Utc::now(), tasks.clone(), $strategy).unwrap();
+                            let schedule = schedule(tasks.clone()).unwrap();
                             assert_eq!(schedule.0[0].task, tasks[0]);
                             assert_eq!(schedule.0[1].task, tasks[1]);
                         }
 
                         // Leveling the deadlines should make the more important task be scheduled first again.
                         tasks[0].deadline = Utc::now() + Duration::hours(3);
-                        let schedule = Schedule::schedule(Utc::now(), tasks.clone(), $strategy).unwrap();
+                        let schedule = schedule(tasks.clone()).unwrap();
                         assert_eq!(schedule.0[0].task, tasks[1]);
                         assert_eq!(schedule.0[1].task, tasks[0]);
                     }
@@ -312,29 +440,145 @@ mod tests {
                     #[test]
                     fn no_schedule() {
                         let tasks = vec![];
-                        let schedule = Schedule::schedule(Utc::now(), tasks, $strategy).unwrap();
+                        let schedule = schedule(tasks).unwrap();
                         assert!(schedule.0.is_empty());
                     }
 
                     #[test]
                     fn missed_deadline() {
                         let tasks = taskset_with_missed_deadline();
-                        assert_matches!(Schedule::schedule(Utc::now(), tasks, $strategy),
+                        assert_matches!(schedule(tasks),
                                         Err(Error(ErrorKind::DeadlineMissed(_, true), _)));
                     }
 
                     #[test]
                     fn impossible_deadline() {
                         let tasks = taskset_with_impossible_deadline();
-                        assert_matches!(Schedule::schedule(Utc::now(), tasks, $strategy),
+                        assert_matches!(schedule(tasks),
                                         Err(Error(ErrorKind::DeadlineMissed(_, false), _)));
                     }
 
                     #[test]
                     fn out_of_time() {
                         let tasks = taskset_impossible_combination();
-                        assert_matches!(Schedule::schedule(Utc::now(), tasks, $strategy),
+                        assert_matches!(schedule(tasks),
                                         Err(Error(ErrorKind::NotEnoughTime(_), _)));
+                    }
+
+                    #[test]
+                    fn schedules_within_the_time_segment() {
+                        let now = Utc::now();
+                        let tasks = vec![
+                            Task {
+                                id: 1,
+                                content: "urgent-quick".to_string(),
+                                deadline: now + Duration::days(2),
+                                duration: Duration::minutes(20),
+                                importance: 4,
+                            },
+                            Task {
+                                id: 2,
+                                content: "important-quick".to_string(),
+                                deadline: now + Duration::days(2),
+                                duration: Duration::minutes(20),
+                                importance: 9,
+                            },
+                            Task {
+                                id: 3,
+                                content: "urgent-long".to_string(),
+                                deadline: now + Duration::days(4),
+                                duration: Duration::hours(2),
+                                importance: 4,
+                            },
+                            Task {
+                                id: 4,
+                                content: "important-long".to_string(),
+                                deadline: now + Duration::days(4),
+                                duration: Duration::hours(2),
+                                importance: 9,
+                            },
+                        ];
+                        let segment = TimeSegment {
+                            ranges: vec![now + Duration::hours(10)..now + Duration::hours(12)],
+                            start: now,
+                            period: Duration::days(1),
+                        };
+                        let schedule = Schedule::schedule_within_segment(now, tasks, segment, $strategy);
+                        assert_matches!(schedule, Ok(Schedule(scheduled_tasks)) => {
+                            for scheduled_task in scheduled_tasks {
+                                let start = scheduled_task.when;
+                                let end = scheduled_task.when + scheduled_task.task.duration;
+                                assert!(
+                                    (start >= now + Duration::hours(10)
+                                     && end <= now + Duration::hours(12))
+                                        || (start >= now + Duration::days(1) + Duration::hours(10)
+                                            && end <= now + Duration::days(1) + Duration::hours(12))
+                                        || (start >= now + Duration::days(2) + Duration::hours(10)
+                                            && end <= now + Duration::days(2) + Duration::hours(12))
+                                );
+                            }
+                        });
+                    }
+
+                    #[test]
+                    fn fails_if_no_space_in_time_segment() {
+                        let now = Utc::now();
+                        // Segment: two hours daily
+                        let segment = TimeSegment {
+                            ranges: vec![now + Duration::hours(10)..now + Duration::hours(12)],
+                            start: now,
+                            period: Duration::days(1),
+                        };
+
+                        // Trying to schedule tasks longer than two hours fails
+                        let tasks = vec![
+                            Task {
+                                id: 1,
+                                content: "too-long".to_string(),
+                                deadline: now + Duration::days(4),
+                                duration: Duration::hours(2) + Duration::seconds(1),
+                                importance: 10,
+                            },
+                        ];
+                        let schedule = Schedule::schedule_within_segment(now, tasks, segment.clone(), $strategy);
+                        assert_matches!(schedule, Err(Error(ErrorKind::NotEnoughTime(_), _)));
+
+                        // Trying to schedule more tasks than possible to fit in
+                        // to the segment, fails as well
+                        let tasks = vec![
+                            Task {
+                                id: 1,
+                                content: "task1".to_string(),
+                                deadline: now + Duration::hours(36) - Duration::seconds(1),
+                                duration: Duration::hours(1),
+                                importance: 5,
+                            },
+                            Task {
+                                id: 2,
+                                content: "task2".to_string(),
+                                deadline: now + Duration::hours(36) - Duration::seconds(1),
+                                duration: Duration::hours(1),
+                                importance: 5,
+                            },
+                            Task {
+                                id: 3,
+                                content: "task3".to_string(),
+                                deadline: now + Duration::hours(36) - Duration::seconds(1),
+                                duration: Duration::hours(2),
+                                importance: 5,
+                            },
+                        ];
+                        let schedule = Schedule::schedule_within_segment(now, tasks, segment, $strategy);
+                        assert_matches!(schedule, Err(Error(ErrorKind::NotEnoughTime(_), _)));
+                    }
+
+                    #[test]
+                    fn can_handle_never_time_segment() {
+                        let tasks = taskset_of_myrjam();
+                        let schedule = Schedule::schedule_within_segment(Utc::now(), tasks, never(), $strategy);
+                        assert_matches!(schedule, Err(Error(ErrorKind::NotEnoughTime(_), _)));
+                        let schedule = Schedule::schedule_within_segment(Utc::now(), vec![], never(), $strategy);
+                        assert_matches!(schedule, Ok(Schedule(ref tasks)) if tasks.is_empty());
                     }
                 }
              )*
@@ -417,8 +661,13 @@ mod tests {
     #[test]
     fn schedule_for_myrjam() {
         let tasks = taskset_of_myrjam();
-        let schedule =
-            Schedule::schedule(Utc::now(), tasks.clone(), SchedulingStrategy::Urgency).unwrap();
+        let schedule = Schedule::schedule_within_segment(
+            Utc::now(),
+            tasks.clone(),
+            anytime(),
+            SchedulingStrategy::Urgency,
+        )
+        .unwrap();
         let mut expected_when = Utc::now() + *SCHEDULE_DELAY;
         // 1. Make onion soup, 1h, 3, in 2 hours
         assert_eq!(schedule.0[0].task, tasks[1]);
@@ -448,8 +697,13 @@ mod tests {
     #[test]
     fn schedule_myrjams_schedule_by_importance() {
         let tasks = taskset_of_myrjam();
-        let schedule =
-            Schedule::schedule(Utc::now(), tasks.clone(), SchedulingStrategy::Importance).unwrap();
+        let schedule = Schedule::schedule_within_segment(
+            Utc::now(),
+            tasks.clone(),
+            anytime(),
+            SchedulingStrategy::Importance,
+        )
+        .unwrap();
         let mut expected_when = Utc::now() + *SCHEDULE_DELAY;
         // 5. Make dentist appointment, 10m, 5, in 7 days
         assert_eq!(schedule.0[0].task, tasks[5]);
@@ -547,8 +801,13 @@ mod tests {
     #[test]
     fn schedule_gandalfs_schedule_by_importance() {
         let tasks = taskset_of_gandalf();
-        let schedule =
-            Schedule::schedule(Utc::now(), tasks.clone(), SchedulingStrategy::Importance).unwrap();
+        let schedule = Schedule::schedule_within_segment(
+            Utc::now(),
+            tasks.clone(),
+            anytime(),
+            SchedulingStrategy::Importance,
+        )
+        .unwrap();
         let mut expected_when = Utc::now() + *SCHEDULE_DELAY;
         // 7. Prepare epic-sounding one-liners
         assert_eq!(schedule.0[0].task, tasks[7]);

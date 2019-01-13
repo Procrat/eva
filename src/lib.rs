@@ -13,8 +13,6 @@ extern crate diesel;
 #[macro_use]
 extern crate diesel_migrations;
 
-use std::hash::{Hash, Hasher};
-
 use chrono::prelude::*;
 use chrono::Duration;
 use derive_new::new;
@@ -64,30 +62,13 @@ pub struct NewTask {
     pub importance: u32,
 }
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct Task {
     pub id: u32,
     pub content: String,
     pub deadline: DateTime<Utc>,
     pub duration: Duration,
     pub importance: u32,
-}
-
-// Hack because chrono::Duration doesn't implement the Hash trait.
-impl Hash for Task {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
-        self.content.hash(state);
-        self.deadline.hash(state);
-        self.duration
-            .to_std()
-            .expect(&format!(
-                "Internal error: duration of {} was negative",
-                self
-            ))
-            .hash(state);
-        self.importance.hash(state);
-    }
 }
 
 pub fn add<'a: 'b, 'b>(

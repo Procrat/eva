@@ -114,7 +114,9 @@ pub fn schedule<'a: 'c, 'b: 'c, 'c>(
         "urgency" => SchedulingStrategy::Urgency,
         _ => panic!("Unsupported scheduling strategy provided"),
     };
-    let start = configuration.now();
+    // Ensure everything is scheduled for some time after the algorithm has
+    // finished.
+    let start = configuration.now() + Duration::minutes(1);
 
     configuration.database.all_tasks().and_then(move |tasks| {
         let mut tasks_per_segment = HashMap::new();

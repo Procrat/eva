@@ -2,6 +2,7 @@ use std::fmt;
 use std::rc::Rc;
 
 use chrono::prelude::*;
+use failure::Fail;
 use itertools::Itertools;
 
 use crate::configuration::SchedulingStrategy;
@@ -10,36 +11,31 @@ use crate::Task;
 
 use self::schedule_tree::{Entry, ScheduleTree};
 
-pub use self::errors::*;
-
 mod schedule_tree;
 
-mod errors {
-    use crate::Task;
-
-    error_chain! {
-        errors {
-            DeadlineMissed(task: Task, already_missed: bool) {
-                description("deadline missed")
-                display("I could not schedule {} because you {} the deadline.\nYou might want to \
-                        postpone this task or remove it if it's not longer relevant",
-                        task,
-                        if *already_missed { "missed" } else { "will miss" })
-            }
-            NotEnoughTime(task: Task) {
-                description("not enough time")
-                display("I could not schedule {} because you don't have enough time to do \
-                        everything.\nYou might want to decide not to do some things or relax \
-                        their deadlines",
-                        task)
-            }
-            Internal(more_info: String) {
-                description("internal error")
-                display("An internal error occurred (This shouldn't happen.): {}", more_info)
-            }
-        }
-    }
+#[derive(Debug, Fail)]
+pub enum Error {
+    #[fail(
+        display = "I could not schedule {} because you {} the deadline.\nYou might want to \
+                   postpone this task or remove it if it's not longer relevant",
+        task, tense
+    )]
+    DeadlineMissed { task: Task, tense: &'static str },
+    #[fail(
+        display = "I could not schedule {} because you don't have enough time to do \
+                   everything.\nYou might want to decide not to do some things or relax their \
+                   deadlines",
+        task
+    )]
+    NotEnoughTime { task: Task },
+    #[fail(
+        display = "An internal error occurred (This shouldn't happen.): {}",
+        _0
+    )]
+    Internal(&'static str),
 }
+
+type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, PartialEq)]
 pub struct ScheduledTask {
@@ -109,7 +105,7 @@ impl Schedule {
                 .iter()
                 .map(|task| task.deadline)
                 .max()
-                .expect("Internal error: last deadline not found");
+                .ok_or(Error::Internal("last deadline not found"))?;
             let unscheduleables = segment.inverse().generate_ranges(start, last_deadline);
             for unscheduleable in unscheduleables {
                 tree.schedule_exact(
@@ -197,10 +193,14 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Item> {
         tasks.sort_by_key(|task| (task.importance, start.signed_duration_since(task.deadline)));
         for task in &tasks {
             if task.deadline < start + task.duration {
-                bail!(ErrorKind::DeadlineMissed(
-                    (**task).clone(),
-                    task.deadline < start
-                ));
+                return Err(Error::DeadlineMissed {
+                    task: (**task).clone(),
+                    tense: if task.deadline < start {
+                        "missed"
+                    } else {
+                        "will miss"
+                    },
+                });
             }
             if !self.schedule_close_before(
                 task.deadline,
@@ -208,7 +208,9 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Item> {
                 Some(start),
                 Item::Task(Rc::clone(task)),
             ) {
-                bail!(ErrorKind::NotEnoughTime((**task).clone()));
+                return Err(Error::NotEnoughTime {
+                    task: (**task).clone(),
+                });
             }
         }
         // Next, shift the most important tasks towards today, and so on, filling up the gaps.
@@ -217,26 +219,21 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Item> {
         while changed {
             changed = false;
             for task in tasks.iter().rev() {
-                let scheduled_entry =
-                    self.unschedule(&Item::Task(task.clone())).ok_or_else(|| {
-                        ErrorKind::Internal("I couldn't unschedule a task".to_owned())
-                    })?;
+                let scheduled_entry = self
+                    .unschedule(&Item::Task(task.clone()))
+                    .ok_or_else(|| Error::Internal("I couldn't unschedule a task"))?;
                 if !self.schedule_close_after(
                     start,
                     task.duration,
                     Some(scheduled_entry.end),
                     scheduled_entry.data,
                 ) {
-                    bail!(ErrorKind::Internal(
-                        "I couldn't reschedule a task".to_owned()
-                    ));
+                    return Err(Error::Internal("I couldn't reschedule a task"));
                 }
                 let new_start =
                     self.when_scheduled(&Item::Task(task.clone()))
                         .ok_or_else(|| {
-                            ErrorKind::Internal(
-                                "I couldn't find a task that was just scheduled".to_owned(),
-                            )
+                            Error::Internal("I couldn't find a task that was just scheduled")
                         })?;
                 if scheduled_entry.start != *new_start {
                     changed = true;
@@ -266,10 +263,14 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Item> {
         tasks.sort_by_key(|task| task.importance);
         for task in tasks {
             if task.deadline < start + task.duration {
-                bail!(ErrorKind::DeadlineMissed(
-                    (*task).clone(),
-                    task.deadline < start
-                ));
+                return Err(Error::DeadlineMissed {
+                    task: (*task).clone(),
+                    tense: if task.deadline < start {
+                        "missed"
+                    } else {
+                        "will miss"
+                    },
+                });
             }
             if !self.schedule_close_before(
                 task.deadline,
@@ -277,7 +278,9 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Item> {
                 Some(start),
                 Item::Task(Rc::clone(&task)),
             ) {
-                bail!(ErrorKind::NotEnoughTime((*task).clone()));
+                return Err(Error::NotEnoughTime {
+                    task: (*task).clone(),
+                });
             }
         }
         // Next, shift the all tasks towards the present, filling up the gaps.
@@ -291,18 +294,16 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Item> {
             .collect::<Vec<_>>();
         for entry in entries {
             if let Item::Task(ref task) = entry.data {
-                let scheduled_entry = self.unschedule(&entry.data).ok_or_else(|| {
-                    ErrorKind::Internal("I couldn't unschedule a task".to_owned())
-                })?;
+                let scheduled_entry = self
+                    .unschedule(&entry.data)
+                    .ok_or_else(|| Error::Internal("I couldn't unschedule a task"))?;
                 if !self.schedule_close_after(
                     start,
                     task.duration,
                     Some(scheduled_entry.end),
                     scheduled_entry.data,
                 ) {
-                    bail!(ErrorKind::Internal(
-                        "I couldn't reschedule a task".to_owned()
-                    ));
+                    return Err(Error::Internal("I couldn't reschedule a task"));
                 }
             }
         }
@@ -443,14 +444,16 @@ mod tests {
                     fn missed_deadline() {
                         let tasks = taskset_with_missed_deadline();
                         assert_matches!(schedule(tasks, Utc::now()),
-                                        Err(Error(ErrorKind::DeadlineMissed(_, true), _)));
+                                        Err(Error::DeadlineMissed { tense, .. })
+                                        if tense == "missed");
                     }
 
                     #[test]
                     fn impossible_deadline() {
                         let tasks = taskset_with_impossible_deadline();
                         assert_matches!(schedule(tasks, Utc::now()),
-                                        Err(Error(ErrorKind::DeadlineMissed(_, false), _)));
+                                        Err(Error::DeadlineMissed { tense, .. })
+                                        if tense == "will miss");
                     }
 
                     #[test]
@@ -458,7 +461,7 @@ mod tests {
                         let start = Utc::now();
                         let tasks = taskset_impossible_combination(start);
                         assert_matches!(schedule(tasks, start),
-                                        Err(Error(ErrorKind::NotEnoughTime(_), _)));
+                                        Err(Error::NotEnoughTime { .. }));
                     }
 
                     #[test]
@@ -537,7 +540,7 @@ mod tests {
                             },
                         ];
                         let schedule = Schedule::schedule_within_segment(now, tasks, segment.clone(), $strategy);
-                        assert_matches!(schedule, Err(Error(ErrorKind::NotEnoughTime(_), _)));
+                        assert_matches!(schedule, Err(Error::NotEnoughTime { .. }));
 
                         // Trying to schedule more tasks than possible to fit in
                         // to the segment, fails as well
@@ -565,14 +568,14 @@ mod tests {
                             },
                         ];
                         let schedule = Schedule::schedule_within_segment(now, tasks, segment, $strategy);
-                        assert_matches!(schedule, Err(Error(ErrorKind::NotEnoughTime(_), _)));
+                        assert_matches!(schedule, Err(Error::NotEnoughTime { .. }));
                     }
 
                     #[test]
                     fn can_handle_never_time_segment() {
                         let tasks = taskset_of_myrjam();
                         let schedule = Schedule::schedule_within_segment(Utc::now(), tasks, never(), $strategy);
-                        assert_matches!(schedule, Err(Error(ErrorKind::NotEnoughTime(_), _)));
+                        assert_matches!(schedule, Err(Error::NotEnoughTime { .. }));
                         let schedule = Schedule::schedule_within_segment(Utc::now(), vec![], never(), $strategy);
                         assert_matches!(schedule, Ok(Schedule(ref tasks)) if tasks.is_empty());
                     }

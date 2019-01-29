@@ -1,35 +1,44 @@
-#[macro_use]
-extern crate error_chain;
-
-
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 use eva::configuration::Configuration;
+use failure::Fail;
 use futures::executor::block_on;
 use itertools::Itertools;
 
-use crate::errors::*;
 use crate::pretty_print::PrettyPrint;
-
 
 mod configuration;
 mod parse;
 mod pretty_print;
 
-mod errors {
-    use crate::configuration;
-    use crate::parse;
+#[derive(Debug, Fail)]
+enum Error {
+    #[fail(display = "{}", _0)]
+    Configuration(#[cause] configuration::Error),
+    #[fail(display = "{}", _0)]
+    Parse(#[cause] parse::Error),
+    #[fail(display = "{}", _0)]
+    Eva(#[cause] eva::Error),
+}
 
-    error_chain! {
-        links {
-            Configuration(configuration::Error, configuration::ErrorKind);
-            Parse(parse::Error, parse::ErrorKind);
-        }
-        foreign_links {
-            EvaCore(eva::Error);
-        }
+impl From<configuration::Error> for Error {
+    fn from(error: configuration::Error) -> Error {
+        Error::Configuration(error)
     }
 }
 
+impl From<parse::Error> for Error {
+    fn from(error: parse::Error) -> Error {
+        Error::Parse(error)
+    }
+}
+
+impl From<eva::Error> for Error {
+    fn from(error: eva::Error) -> Error {
+        Error::Eva(error)
+    }
+}
+
+type Result<T> = std::result::Result<T, Error>;
 
 fn main() {
     if let Err(ref error) = run() {
@@ -101,19 +110,19 @@ fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
             };
             let _task = block_on(eva::add(configuration, new_task))?;
             Ok(())
-        },
+        }
         ("rm", Some(submatches)) => {
             let id = submatches.value_of("task-id").unwrap();
             let id = parse::id(id)?;
             Ok(block_on(eva::remove(configuration, id))?)
-        },
+        }
         ("set", Some(submatches)) => {
             let field = submatches.value_of("property").unwrap();
             let id = submatches.value_of("task-id").unwrap();
             let value = submatches.value_of("value").unwrap();
             let id = parse::id(id)?;
             Ok(set_field(configuration, field, id, value)?)
-        },
+        }
         ("tasks", Some(_submatches)) => {
             let tasks = block_on(eva::all(configuration))?;
             println!("Tasks:");
@@ -122,13 +131,13 @@ fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
                 println!("  {}", task.pretty_print().split("\n").join("\n  "));
             }
             Ok(())
-        },
+        }
         ("schedule", Some(submatches)) => {
             let strategy = submatches.value_of("strategy").unwrap().to_owned();
             let schedule = block_on(eva::schedule(configuration, &strategy))?;
             println!("{}", schedule.pretty_print());
             Ok(())
-        },
+        }
         _ => unreachable!(),
     }
 }
@@ -146,16 +155,7 @@ fn set_field(configuration: &Configuration, field: &str, id: u32, value: &str) -
 }
 
 fn handle_error(error: &Error) {
-    let chain = error.iter().skip(1)
-        .map(|x| x.to_string())
-        .collect::<Vec<String>>()
-        .join(". ");
-
-    if chain.is_empty() {
-        eprintln!("{}.", error);
-    } else {
-        eprintln!("{}. ({})", error, chain);
-    }
+    eprintln!("{}", error);
 
     // Print backtrace when RUST_BACKTRACE=1
     if let Some(backtrace) = error.backtrace() {

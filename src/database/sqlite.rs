@@ -7,7 +7,7 @@ use futures::future;
 use futures::future::LocalFutureObj;
 
 use super::Database;
-use crate::errors::*;
+use super::{Error, Result};
 
 use self::tasks::dsl::tasks as task_table;
 
@@ -53,15 +53,12 @@ impl Database for SqliteConnection {
             diesel::insert_into(task_table)
                 .values(&NewTask::from(task))
                 .execute(self)
-                .chain_err(|| ErrorKind::Database("while trying to add a task".into()))?;
+                .map_err(|e| Error("while trying to add a task", e.into()))?;
             let id = diesel::select(last_insert_rowid)
                 .get_result::<i32>(self)
-                .chain_err(|| {
-                    ErrorKind::Database("while trying to fetch the id of the new task".into())
-                })?;
-            let task = await!(self.find_task(id as u32)).chain_err(|| {
-                ErrorKind::Database("while trying to fetch the newly created task".into())
-            })?;
+                .map_err(|e| Error("while trying to fetch the id of the new task", e.into()))?;
+            let task = await!(self.find_task(id as u32))
+                .map_err(|e| Error("while trying to fetch the newly created task", e.into()))?;
             Ok(task)
         };
         LocalFutureObj::new(Box::new(future_task))
@@ -71,11 +68,13 @@ impl Database for SqliteConnection {
         let future = async move {
             let amount_deleted = diesel::delete(task_table.find(id as i32))
                 .execute(self)
-                .chain_err(|| ErrorKind::Database("while trying to remove a task".to_owned()))?;
-            ensure!(
-                amount_deleted == 1,
-                ErrorKind::Database("while trying to remove a task".to_owned())
-            );
+                .map_err(|e| Error("while trying to remove a task", e.into()))?;
+            if amount_deleted != 1 {
+                return Err(Error(
+                    "while trying to remove a task",
+                    failure::format_err!("{} task(s) were deleted", amount_deleted),
+                ));
+            }
             Ok(())
         };
         LocalFutureObj::new(Box::new(future))
@@ -86,7 +85,7 @@ impl Database for SqliteConnection {
             let db_task = task_table
                 .find(id as i32)
                 .get_result::<Task>(self)
-                .chain_err(|| ErrorKind::Database("while trying to find a task".to_owned()))?;
+                .map_err(|e| Error("while trying to find a task", e.into()))?;
             crate::Task::from(db_task)
         };
         LocalFutureObj::new(Box::new(future::ready(task_result)))
@@ -98,11 +97,13 @@ impl Database for SqliteConnection {
             let amount_updated = diesel::update(&db_task)
                 .set(&db_task)
                 .execute(self)
-                .chain_err(|| ErrorKind::Database("while trying to update a task".to_owned()))?;
-            ensure!(
-                amount_updated == 1,
-                ErrorKind::Database("while trying to remove a task".to_owned())
-            );
+                .map_err(|e| Error("while trying to update a task", e.into()))?;
+            if amount_updated != 1 {
+                return Err(Error(
+                    "while trying to update a task",
+                    failure::format_err!("{} task(s) were updated", amount_updated),
+                ));
+            }
             Ok(())
         };
         LocalFutureObj::new(Box::new(future))
@@ -112,7 +113,7 @@ impl Database for SqliteConnection {
         let tasks_result = try {
             let db_tasks = task_table
                 .load::<Task>(self)
-                .chain_err(|| ErrorKind::Database("while trying to retrieve tasks".to_owned()))?;
+                .map_err(|e| Error("while trying to retrieve tasks", e.into()))?;
             db_tasks.into_iter().map(crate::Task::from).collect()
         };
         LocalFutureObj::new(Box::new(future::ready(tasks_result)))
@@ -158,12 +159,11 @@ impl From<crate::Task> for Task {
 }
 
 pub fn make_connection(database_url: &str) -> Result<SqliteConnection> {
-    let connection = SqliteConnection::establish(database_url).chain_err(|| {
-        ErrorKind::Database(format!("while trying to connect to {}", database_url))
-    })?;
+    let connection = SqliteConnection::establish(database_url)
+        .map_err(|e| Error("while trying to connect to the database", e.into()))?;
     // TODO run instead of run_with_output
     embedded_migrations::run_with_output(&connection, &mut io::stderr())
-        .chain_err(|| ErrorKind::Database("while running migrations".to_owned()))?;
+        .map_err(|e| Error("while running migrations", e.into()))?;
     Ok(connection)
 }
 

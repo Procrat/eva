@@ -1,28 +1,24 @@
 use chrono::prelude::*;
 use itertools::Itertools;
 
-
 pub(crate) trait PrettyPrint {
     fn pretty_print(&self) -> String;
 }
 
-
 impl PrettyPrint for eva::Schedule {
     fn pretty_print(&self) -> String {
-        format!("Schedule:\n  {}",
-                self.0.iter().map(PrettyPrint::pretty_print).join("\n  "))
+        format!(
+            "Schedule:\n  {}",
+            self.0.iter().map(PrettyPrint::pretty_print).join("\n  ")
+        )
     }
 }
-
 
 impl PrettyPrint for eva::ScheduledTask {
     fn pretty_print(&self) -> String {
-        format!("{}: {}",
-                self.when.pretty_print(),
-                self.task.pretty_print())
+        format!("{}: {}", self.when.pretty_print(), self.task.pretty_print())
     }
 }
-
 
 impl PrettyPrint for DateTime<Utc> {
     fn pretty_print(&self) -> String {
@@ -35,20 +31,20 @@ impl PrettyPrint for DateTime<Utc> {
     }
 }
 
-
 impl PrettyPrint for eva::Task {
     fn pretty_print(&self) -> String {
         let prefix = format!("{}. ", self.id);
-        format!("{}{}\n{}(deadline: {}, duration: {}, importance: {})",
-                prefix,
-                self.content,
-                " ".repeat(prefix.len()),
-                self.deadline.pretty_print(),
-                self.duration.pretty_print(),
-                self.importance)
+        format!(
+            "{}{}\n{}(deadline: {}, duration: {}, importance: {})",
+            prefix,
+            self.content,
+            " ".repeat(prefix.len()),
+            self.deadline.pretty_print(),
+            self.duration.pretty_print(),
+            self.importance
+        )
     }
 }
-
 
 impl PrettyPrint for chrono::Duration {
     fn pretty_print(&self) -> String {

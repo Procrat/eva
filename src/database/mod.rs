@@ -1,12 +1,18 @@
 use std::fmt;
 
+use failure::Fail;
 use futures::future::LocalFutureObj;
 
-use crate::errors::*;
 use crate::{NewTask, Task};
 
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
+
+#[derive(Debug, Fail)]
+#[fail(display = "A database error occurred {}: {}", _0, _1)]
+pub struct Error(pub &'static str, #[cause] pub failure::Error);
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 pub trait Database {
     fn add_task<'a: 'b, 'b>(&'a self, task: NewTask) -> LocalFutureObj<'b, Result<Task>>;

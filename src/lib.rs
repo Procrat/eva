@@ -3,9 +3,6 @@
 #![feature(async_await, await_macro)]
 #![feature(try_blocks)]
 
-#[macro_use]
-extern crate error_chain;
-
 #[cfg(feature = "sqlite")]
 #[macro_use]
 extern crate diesel;
@@ -18,12 +15,12 @@ use std::collections::HashMap;
 use chrono::prelude::*;
 use chrono::Duration;
 use derive_new::new;
+use failure::Fail;
 use futures::prelude::*;
 
 use crate::configuration::{Configuration, SchedulingStrategy};
 use crate::time_segment::TimeSegment;
 
-pub use crate::errors::*;
 pub use crate::scheduling::{Schedule, ScheduledTask};
 
 #[macro_use]
@@ -34,25 +31,15 @@ pub mod database;
 mod scheduling;
 mod time_segment;
 
-pub mod errors {
-    use crate::scheduling;
-
-    error_chain! {
-        links {
-            Schedule(scheduling::Error, scheduling::ErrorKind);
-        }
-        errors {
-            Database(when: String) {
-                description("database error")
-                display("A database error occurred {}", when)
-            }
-            Internal(more_info: String) {
-                description("internal error")
-                display("An internal error occurred (This shouldn't happen.): {}", more_info)
-            }
-        }
-    }
+#[derive(Debug, Fail)]
+pub enum Error {
+    #[fail(display = "{}", _0)]
+    Database(#[cause] crate::database::Error),
+    #[fail(display = "{}", _0)]
+    Schedule(#[cause] crate::scheduling::Error),
 }
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, new, Clone)]
 pub struct NewTask {
@@ -75,34 +62,46 @@ pub fn add<'a: 'b, 'b>(
     configuration: &'a Configuration,
     new_task: NewTask,
 ) -> impl Future<Output = Result<Task>> + 'b {
-    configuration.database.add_task(new_task)
+    configuration
+        .database
+        .add_task(new_task)
+        .map_err(Error::Database)
 }
 
 pub fn remove<'a: 'b, 'b>(
     configuration: &'a Configuration,
     id: u32,
 ) -> impl Future<Output = Result<()>> + 'b {
-    configuration.database.remove_task(id)
+    configuration
+        .database
+        .remove_task(id)
+        .map_err(Error::Database)
 }
 
 pub fn get<'a: 'b, 'b>(
     configuration: &'a Configuration,
     id: u32,
 ) -> impl Future<Output = Result<Task>> + 'b {
-    configuration.database.find_task(id)
+    configuration
+        .database
+        .find_task(id)
+        .map_err(Error::Database)
 }
 
 pub fn update<'a: 'b, 'b>(
     configuration: &'a Configuration,
     task: Task,
 ) -> impl Future<Output = Result<()>> + 'b {
-    configuration.database.update_task(task)
+    configuration
+        .database
+        .update_task(task)
+        .map_err(Error::Database)
 }
 
 pub fn all<'a: 'b, 'b>(
     configuration: &'a Configuration,
 ) -> impl Future<Output = Result<Vec<Task>>> + 'b {
-    configuration.database.all_tasks()
+    configuration.database.all_tasks().map_err(Error::Database)
 }
 
 pub fn schedule<'a: 'c, 'b: 'c, 'c>(
@@ -118,15 +117,19 @@ pub fn schedule<'a: 'c, 'b: 'c, 'c>(
     // finished.
     let start = configuration.now() + Duration::minutes(1);
 
-    configuration.database.all_tasks().and_then(move |tasks| {
-        let mut tasks_per_segment = HashMap::new();
-        let anytime = TimeSegment {
-            ranges: vec![start..start + Duration::weeks(1)],
-            start,
-            period: Duration::weeks(1),
-        };
-        tasks_per_segment.insert(anytime, tasks);
-        let schedule = Schedule::schedule(start, tasks_per_segment, strategy);
-        future::ready(schedule).map_err(Error::from)
-    })
+    configuration
+        .database
+        .all_tasks()
+        .map_err(Error::Database)
+        .and_then(move |tasks| {
+            let mut tasks_per_segment = HashMap::new();
+            let anytime = TimeSegment {
+                ranges: vec![start..start + Duration::weeks(1)],
+                start,
+                period: Duration::weeks(1),
+            };
+            tasks_per_segment.insert(anytime, tasks);
+            let schedule = Schedule::schedule(start, tasks_per_segment, strategy);
+            future::ready(schedule).map_err(Error::Schedule)
+        })
 }

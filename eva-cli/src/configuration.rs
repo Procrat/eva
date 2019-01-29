@@ -4,104 +4,108 @@ use std::path::{Path, PathBuf};
 use app_dirs;
 use app_dirs::{AppDataType, AppInfo};
 use config;
-use eva;
 use eva::configuration::{Configuration, SchedulingStrategy};
+use failure::Fail;
 use shellexpand;
 
-pub use self::errors::*;
-
-mod errors {
-    error_chain! {
-        errors {
-            Read(what: String) {
-                description("configuration parsing error")
-                display("An error occurred while trying to read {}", what)
-            }
-            FileCreation(config_name: String) {
-                description("file creation error while reading configuration")
-                display("I could not create {}", config_name)
-            }
-            ShellExpansion(what: String) {
-                description("shell expansion error while reading configuration")
-                display("An error occurred while trying to expand the configuration of {}", what)
-            }
-            DatabaseConnect(path: String) {
-                description("database connection error")
-                display("I could not connect to the database ({})", path)
-            }
-            Default(what: String) {
-                description("setting defaults error while reading configuration")
-                display("An error occurred while trying to set the default configuration of {}",
-                        what)
-            }
-        }
-    }
+#[derive(Debug, Fail)]
+pub enum Error {
+    #[fail(display = "An error occurred while trying to read {}: {}", _0, _1)]
+    Read(&'static str, #[cause] failure::Error),
+    #[fail(display = "I could not create {}: {}", _0, _1)]
+    FileCreation(&'static str, #[cause] failure::Error),
+    #[fail(
+        display = "An error occurred while trying to expand the configuration of {}: {}",
+        _0, _1
+    )]
+    ShellExpansion(String, #[cause] failure::Error),
+    #[fail(display = "I could not connect to the database ({}): {}", _0, _1)]
+    DatabaseConnect(String, #[cause] eva::database::Error),
+    #[fail(
+        display = "An error occurred while trying to set the default configuration of {}: {}",
+        _0, _1
+    )]
+    Default(&'static str, #[cause] failure::Error),
 }
 
-const APP_INFO: AppInfo = AppInfo { name: "eva", author: "Stijn Seghers" };
+type Result<T> = std::result::Result<T, Error>;
 
+const APP_INFO: AppInfo = AppInfo {
+    name: "eva",
+    author: "Stijn Seghers",
+};
 
 pub fn read() -> Result<Configuration> {
     let config_filename = config_root()?.join("eva.toml");
-    let config_filename = config_filename.to_str()
-        .ok_or_else(|| ErrorKind::FileCreation("my configuration directory".to_owned()))?;
+    let config_filename = config_filename.to_str().ok_or_else(|| {
+        Error::FileCreation(
+            "my configuration directory",
+            failure::err_msg("The config directory path contains illegal characters"),
+        )
+    })?;
 
     let mut configuration = config::Config::new();
 
     set_defaults(&mut configuration)?
         .merge(config::File::with_name(config_filename).required(false))
-        .chain_err(|| ErrorKind::Read(format!("the local configuration file {}.toml",
-                                              config_filename)))?
+        .map_err(|e| Error::Read("the local configuration file", e.into()))?
         .merge(config::Environment::with_prefix("eva"))
-        .chain_err(|| ErrorKind::Read("environment variables".to_owned()))?;
+        .map_err(|e| Error::Read("environment variables", e.into()))?;
 
-    let database_path = configuration.get_str("database")
-        .chain_err(|| ErrorKind::Read("the database path".to_owned()))?
+    let database_path = configuration
+        .get_str("database")
+        .map_err(|e| Error::Read("the database path", e.into()))?
         .expand("the database path")?;
-    ensure_exists(&database_path, "the database path")?;
+    ensure_exists(&database_path)
+        .map_err(|e| Error::FileCreation("the database path", e.into()))?;
     let database = connect_to_database(&database_path)?;
 
-    let scheduling_strategy = match
-        configuration.get_str("scheduling_strategy")
-        .chain_err(|| ErrorKind::Read("the scheduling strategy".to_owned()))?
-        .as_str() {
-            "importance" => SchedulingStrategy::Importance,
-            "urgency" => SchedulingStrategy::Urgency,
-            _ => bail!(ErrorKind::Read("the scheduling strategy".to_owned())),
-        };
+    let scheduling_strategy = match configuration
+        .get_str("scheduling_strategy")
+        .map_err(|e| Error::Read("the scheduling strategy", e.into()))?
+        .as_str()
+    {
+        "importance" => SchedulingStrategy::Importance,
+        "urgency" => SchedulingStrategy::Urgency,
+        _ => {
+            return Err(Error::Read(
+                "the scheduling strategy",
+                failure::err_msg("The scheduling strategy must be `importance` or `urgency`"),
+            ));
+        }
+    };
 
     Ok(Configuration {
         database: Box::new(database),
-        scheduling_strategy: scheduling_strategy,
+        scheduling_strategy,
     })
 }
 
-
 fn config_root() -> Result<PathBuf> {
     app_dirs::get_app_root(AppDataType::UserConfig, &APP_INFO)
-        .chain_err(|| ErrorKind::FileCreation("my configuration directory".to_owned()))
+        .map_err(|e| Error::FileCreation("my configuration directory", e.into()))
 }
-
 
 fn data_root() -> Result<PathBuf> {
     app_dirs::get_app_root(AppDataType::UserData, &APP_INFO)
-        .chain_err(|| ErrorKind::FileCreation("my data directory".to_owned()))
+        .map_err(|e| Error::FileCreation("my data directory", e.into()))
 }
-
 
 fn set_defaults(configuration: &mut config::Config) -> Result<&mut config::Config> {
     let db_filename = data_root()?.join("db.sqlite");
-    let db_filename = db_filename.to_str()
-        .ok_or_else(|| ErrorKind::Default("the database path".to_owned()))?;
+    let db_filename = db_filename.to_str().ok_or_else(|| {
+        Error::Default(
+            "the database path",
+            failure::err_msg("The database directory path contains illegal characters"),
+        )
+    })?;
 
     Ok(configuration
         .set_default("scheduling_strategy", "importance")
-        .chain_err(|| ErrorKind::Default("the scheduling strategy".to_owned()))?
+        .map_err(|e| Error::Default("the scheduling strategy", e.into()))?
         .set_default("database", db_filename)
-        .chain_err(|| ErrorKind::Default("the database path".to_owned()))?
-        )
+        .map_err(|e| Error::Default("the database path", e.into()))?)
 }
-
 
 trait ShellExpand {
     fn expand(&self, name: &str) -> Result<String>;
@@ -110,22 +114,20 @@ trait ShellExpand {
 impl ShellExpand for String {
     fn expand(&self, name: &str) -> Result<String> {
         Ok(shellexpand::full(self)
-           .chain_err(|| ErrorKind::ShellExpansion(name.to_owned()))?
-           .into_owned())
+            .map_err(|e| Error::ShellExpansion(name.into(), e.into()))?
+            .into_owned())
     }
 }
 
-
-fn ensure_exists(path: &str, name: &str) -> Result<()> {
-    let database_directory = Path::new(path).parent()
-        .ok_or_else(|| ErrorKind::FileCreation(name.to_owned()))?;
-    fs::create_dir_all(database_directory)
-        .chain_err(|| ErrorKind::FileCreation(name.to_owned()))?;
+fn ensure_exists(path: &str) -> std::result::Result<(), failure::Error> {
+    let database_directory = Path::new(path)
+        .parent()
+        .ok_or_else(|| failure::err_msg("A parent directory does not exist"))?;
+    fs::create_dir_all(database_directory)?;
     Ok(())
 }
 
-
 fn connect_to_database(path: &str) -> Result<impl eva::database::Database> {
     Ok(eva::database::sqlite::make_connection(path)
-       .chain_err(|| ErrorKind::DatabaseConnect(path.to_owned()))?)
+        .map_err(|e| Error::DatabaseConnect(path.into(), e.into()))?)
 }

@@ -23,13 +23,11 @@ use crate::time_segment::TimeSegment;
 
 pub use crate::scheduling::{Schedule, ScheduledTask};
 
-#[macro_use]
-mod util;
-
 pub mod configuration;
 pub mod database;
 mod scheduling;
 mod time_segment;
+mod util;
 
 #[derive(Debug, Fail)]
 pub enum Error {

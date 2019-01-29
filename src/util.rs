@@ -1,11 +1,3 @@
-macro_rules! return_on_some {
-    ($e:expr) => {
-        if let Some(value) = $e {
-            return Some(value);
-        }
-    };
-}
-
 pub trait WithSideEffects {
     type WrappedType;
 

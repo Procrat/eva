@@ -1,5 +1,4 @@
 #![feature(box_patterns)]
-#![feature(uniform_paths)]
 #![feature(futures_api)]
 #![feature(async_await, await_macro)]
 #![feature(try_blocks)]

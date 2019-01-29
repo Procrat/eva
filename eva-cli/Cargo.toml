@@ -11,6 +11,6 @@ clap = "2.26"
 config = "0.9"
 error-chain = "0.12"
 eva = { version = "0.0.1", path = "../", features = ["sqlite"] }
-futures-preview = "0.3.0-alpha.9"
+futures-preview = "0.3.0-alpha.12"
 itertools = "0.7"
 shellexpand = "1.0"

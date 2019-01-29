@@ -7,6 +7,14 @@ use std::rc::Rc;
 
 use crate::util::WithSideEffects;
 
+macro_rules! return_on_some {
+    ($e:expr) => {
+        if let Some(value) = $e {
+            return Some(value);
+        }
+    };
+}
+
 #[derive(Debug, Default)]
 pub struct ScheduleTree<T, D: Eq + Hash> {
     root: Option<Node<T, D>>,

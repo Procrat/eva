@@ -1,46 +1,43 @@
 use chrono::{DateTime, Duration, Utc};
 use std::ops::Range;
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct TimeSegment {
-    // ranges is assumed to be in order
-    pub ranges: Vec<Range<DateTime<Utc>>>,
-    pub start: DateTime<Utc>,
-    pub period: Duration,
-}
+pub trait TimeSegment: Clone {
+    fn ranges(&self) -> &Vec<Range<DateTime<Utc>>>;
+    fn start(&self) -> DateTime<Utc>;
+    fn period(&self) -> Duration;
 
-impl TimeSegment {
     /// Construct the inverse of the time segment, i.e. the time segment made up
     /// of all time that the given time segment _doesn't_ cover.
-    pub(crate) fn inverse(&self) -> TimeSegment {
+    fn inverse(&self) -> UnnamedTimeSegment {
         let mut ranges: Vec<Range<DateTime<Utc>>> = vec![];
-        if self.ranges.len() > 0 {
-            if self.ranges[0].start - self.start > Duration::seconds(0) {
-                ranges.push(self.start..self.ranges[0].start);
+        if self.ranges().len() > 0 {
+            if self.ranges()[0].start - self.start() > Duration::seconds(0) {
+                ranges.push(self.start()..self.ranges()[0].start);
             }
-            for i in 0..self.ranges.len() - 1 {
-                if self.ranges[i + 1].start - self.ranges[i].end > Duration::seconds(0) {
-                    ranges.push(self.ranges[i].end..self.ranges[i + 1].start);
+            for i in 0..self.ranges().len() - 1 {
+                if self.ranges()[i + 1].start - self.ranges()[i].end > Duration::seconds(0) {
+                    ranges.push(self.ranges()[i].end..self.ranges()[i + 1].start);
                 }
             }
-            if self.start + self.period - self.ranges[self.ranges.len() - 1].end
+            if self.start() + self.period() - self.ranges()[self.ranges().len() - 1].end
                 > Duration::seconds(0)
             {
-                ranges.push(self.ranges[self.ranges.len() - 1].end..self.start + self.period);
+                ranges
+                    .push(self.ranges()[self.ranges().len() - 1].end..self.start() + self.period());
             }
         } else {
-            ranges.push(self.start..self.start + self.period);
+            ranges.push(self.start()..self.start() + self.period());
         }
-        TimeSegment {
+        UnnamedTimeSegment {
             ranges,
-            start: self.start,
-            period: self.period,
+            start: self.start(),
+            period: self.period(),
         }
     }
 
     /// Generates all the time ranges that the time segment covers between the
     /// given start and end time.
-    pub(crate) fn generate_ranges(
+    fn generate_ranges(
         &self,
         start: DateTime<Utc>,
         end: DateTime<Utc>,
@@ -48,7 +45,7 @@ impl TimeSegment {
         let mut all_ranges = vec![];
 
         let mut period_start = start;
-        let mut period_ranges = self.with_start(start).ranges.clone();
+        let mut period_ranges = self.with_start(start).ranges().clone();
 
         while period_start < end {
             for mut range in &mut period_ranges {
@@ -56,10 +53,10 @@ impl TimeSegment {
                     break;
                 }
                 all_ranges.push(range.clone());
-                range.start = range.start + self.period;
-                range.end = range.end + self.period;
+                range.start = range.start + self.period();
+                range.end = range.end + self.period();
             }
-            period_start = period_start + self.period;
+            period_start = period_start + self.period();
         }
 
         all_ranges
@@ -67,18 +64,64 @@ impl TimeSegment {
 
     /// Returns a new time segment with its start and ranges shifted towards the
     /// given start time.
-    fn with_start(&self, start: DateTime<Utc>) -> TimeSegment {
-        let diff = start - self.start;
+    fn with_start(&self, start: DateTime<Utc>) -> UnnamedTimeSegment {
+        let diff = start - self.start();
         let ranges = self
-            .ranges
+            .ranges()
             .iter()
             .map(|range| range.start + diff..range.end + diff)
             .collect::<Vec<_>>();
-        TimeSegment {
+        UnnamedTimeSegment {
             ranges,
             start,
-            period: self.period,
+            period: self.period(),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NamedTimeSegment {
+    pub id: u32,
+    pub name: String,
+    // ranges is assumed to be in order
+    pub ranges: Vec<Range<DateTime<Utc>>>,
+    pub start: DateTime<Utc>,
+    pub period: Duration,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnnamedTimeSegment {
+    // ranges is assumed to be in order
+    pub ranges: Vec<Range<DateTime<Utc>>>,
+    pub start: DateTime<Utc>,
+    pub period: Duration,
+}
+
+impl TimeSegment for NamedTimeSegment {
+    fn ranges(&self) -> &Vec<Range<DateTime<Utc>>> {
+        &self.ranges
+    }
+
+    fn start(&self) -> DateTime<Utc> {
+        self.start
+    }
+
+    fn period(&self) -> Duration {
+        self.period
+    }
+}
+
+impl TimeSegment for UnnamedTimeSegment {
+    fn ranges(&self) -> &Vec<Range<DateTime<Utc>>> {
+        &self.ranges
+    }
+
+    fn start(&self) -> DateTime<Utc> {
+        self.start
+    }
+
+    fn period(&self) -> Duration {
+        self.period
     }
 }
 
@@ -90,12 +133,12 @@ mod tests {
     fn inverse_base_cases() {
         let start = Utc::now();
         let period = Duration::weeks(1);
-        let anytime = TimeSegment {
+        let anytime = UnnamedTimeSegment {
             ranges: vec![start..start + period],
             start,
             period,
         };
-        let never = TimeSegment {
+        let never = UnnamedTimeSegment {
             ranges: vec![],
             start,
             period,
@@ -108,7 +151,7 @@ mod tests {
     fn inverse_normal_segment() {
         let start = Utc::now();
         let period = Duration::weeks(1);
-        let segment = TimeSegment {
+        let segment = UnnamedTimeSegment {
             ranges: vec![
                 start + Duration::hours(24 + 10)..start + Duration::hours(24 + 15),
                 start + Duration::hours(72 + 16)..start + Duration::hours(72 + 18),
@@ -117,7 +160,7 @@ mod tests {
             start,
             period,
         };
-        let inverse = TimeSegment {
+        let inverse = UnnamedTimeSegment {
             ranges: vec![
                 start..start + Duration::hours(24 + 10),
                 start + Duration::hours(24 + 15)..start + Duration::hours(72 + 16),
@@ -133,8 +176,8 @@ mod tests {
 
     #[test]
     fn generate_ranges_normal_cases() {
-        fn normal_time_segment(start: DateTime<Utc>) -> TimeSegment {
-            TimeSegment {
+        fn normal_time_segment(start: DateTime<Utc>) -> impl TimeSegment {
+            UnnamedTimeSegment {
                 ranges: vec![
                     start + Duration::hours(24 + 10)..start + Duration::hours(24 + 15),
                     start + Duration::hours(72 + 16)..start + Duration::hours(72 + 18),
@@ -204,7 +247,7 @@ mod tests {
     fn with_start() {
         let start = Utc::now();
         let period = Duration::weeks(1);
-        let segment = TimeSegment {
+        let segment = UnnamedTimeSegment {
             ranges: vec![
                 start + Duration::hours(24 + 10)..start + Duration::hours(24 + 15),
                 start + Duration::hours(72 + 16)..start + Duration::hours(72 + 18),
@@ -213,7 +256,7 @@ mod tests {
             start,
             period,
         };
-        let shifted_back_segment = TimeSegment {
+        let shifted_back_segment = UnnamedTimeSegment {
             ranges: vec![
                 start + Duration::hours(10)..start + Duration::hours(15),
                 start + Duration::hours(48 + 16)..start + Duration::hours(48 + 18),
@@ -226,7 +269,7 @@ mod tests {
             segment.with_start(start - Duration::days(1)),
             shifted_back_segment
         );
-        let shifted_forward_segment = TimeSegment {
+        let shifted_forward_segment = UnnamedTimeSegment {
             ranges: vec![
                 start + Duration::hours(48 + 10)..start + Duration::hours(48 + 15),
                 start + Duration::hours(96 + 16)..start + Duration::hours(96 + 18),

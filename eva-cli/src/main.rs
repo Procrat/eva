@@ -107,6 +107,7 @@ fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
                 deadline: parse::deadline(deadline)?,
                 duration: parse::duration(duration)?,
                 importance: parse::importance(importance)?,
+                time_segment_id: 0,
             };
             let _task = block_on(eva::add(configuration, new_task))?;
             Ok(())

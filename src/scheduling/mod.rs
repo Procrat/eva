@@ -1,33 +1,56 @@
-use std::fmt;
+use std::fmt::{self, Debug, Display};
+use std::hash::Hash;
 use std::rc::Rc;
 
 use chrono::prelude::*;
+use chrono::Duration;
 use failure::Fail;
 use itertools::Itertools;
 
 use crate::configuration::SchedulingStrategy;
 use crate::time_segment::TimeSegment;
-use crate::Task;
 
 use self::schedule_tree::{Entry, ScheduleTree};
 
 mod schedule_tree;
 
+pub(crate) trait Task:
+    Debug + Display + Send + Sync + PartialEq + Eq + Clone + Hash
+{
+    fn deadline(&self) -> DateTime<Utc>;
+    fn duration(&self) -> Duration;
+    fn importance(&self) -> u32;
+}
+
+impl Task for crate::Task {
+    fn deadline(&self) -> DateTime<Utc> {
+        self.deadline
+    }
+
+    fn duration(&self) -> Duration {
+        self.duration
+    }
+
+    fn importance(&self) -> u32 {
+        self.importance
+    }
+}
+
 #[derive(Debug, Fail)]
-pub enum Error {
+pub enum Error<TaskT: Debug + Display + Send + Sync + 'static> {
     #[fail(
         display = "I could not schedule {} because you {} the deadline.\nYou might want to \
                    postpone this task or remove it if it's not longer relevant",
         task, tense
     )]
-    DeadlineMissed { task: Task, tense: &'static str },
+    DeadlineMissed { task: TaskT, tense: &'static str },
     #[fail(
         display = "I could not schedule {} because you don't have enough time to do \
                    everything.\nYou might want to decide not to do some things or relax their \
                    deadlines",
         task
     )]
-    NotEnoughTime { task: Task },
+    NotEnoughTime { task: TaskT },
     #[fail(
         display = "An internal error occurred (This shouldn't happen.): {}",
         _0
@@ -35,16 +58,14 @@ pub enum Error {
     Internal(&'static str),
 }
 
-type Result<T> = std::result::Result<T, Error>;
-
 #[derive(Debug, PartialEq)]
-pub struct ScheduledTask {
-    pub task: Task,
+pub struct Scheduled<T> {
+    pub task: T,
     pub when: DateTime<Utc>,
 }
 
-impl std::cmp::PartialOrd for ScheduledTask {
-    fn partial_cmp(&self, other: &ScheduledTask) -> Option<std::cmp::Ordering> {
+impl<TaskT: PartialEq> std::cmp::PartialOrd for Scheduled<TaskT> {
+    fn partial_cmp(&self, other: &Scheduled<TaskT>) -> Option<std::cmp::Ordering> {
         match self.when.cmp(&other.when) {
             std::cmp::Ordering::Equal => None,
             strict_ordering => Some(strict_ordering),
@@ -52,10 +73,16 @@ impl std::cmp::PartialOrd for ScheduledTask {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct Schedule(pub Vec<ScheduledTask>);
+#[derive(Debug)]
+pub struct Schedule<TaskT>(pub Vec<Scheduled<TaskT>>);
 
-impl Schedule {
+impl<TaskT> Default for Schedule<TaskT> {
+    fn default() -> Self {
+        Schedule(vec![])
+    }
+}
+
+impl<TaskT> Schedule<TaskT> {
     /// Schedules tasks according to the given strategy, using the tasks'
     /// deadlines, importance and duration.
     ///
@@ -67,11 +94,14 @@ impl Schedule {
     /// Returns when successful an instance of Schedule which contains all
     /// tasks, each bound to a certain date and time; returns None when not all
     /// tasks could be scheduled.
-    pub fn schedule(
+    pub(crate) fn schedule(
         start: DateTime<Utc>,
-        tasks_per_segment: impl IntoIterator<Item = (TimeSegment, impl IntoIterator<Item = Task>)>,
+        tasks_per_segment: impl IntoIterator<Item = (impl TimeSegment, impl IntoIterator<Item = TaskT>)>,
         strategy: SchedulingStrategy,
-    ) -> Result<Schedule> {
+    ) -> Result<Schedule<TaskT>, Error<TaskT>>
+    where
+        TaskT: Task,
+    {
         tasks_per_segment
             .into_iter()
             .map(|(segment, tasks)| {
@@ -91,19 +121,22 @@ impl Schedule {
 
     fn schedule_within_segment(
         start: DateTime<Utc>,
-        tasks: impl IntoIterator<Item = Task>,
-        segment: TimeSegment,
+        tasks: impl IntoIterator<Item = TaskT>,
+        segment: impl TimeSegment,
         strategy: SchedulingStrategy,
-    ) -> Result<Schedule> {
-        let tasks: Vec<Rc<Task>> = tasks.into_iter().map(Rc::new).collect();
+    ) -> Result<Schedule<TaskT>, Error<TaskT>>
+    where
+        TaskT: Task,
+    {
+        let tasks: Vec<Rc<TaskT>> = tasks.into_iter().map(Rc::new).collect();
         if tasks.is_empty() {
             Ok(Schedule::default())
         } else {
-            let mut tree: ScheduleTree<DateTime<Utc>, Item> = ScheduleTree::new();
+            let mut tree: ScheduleTree<DateTime<Utc>, Item<TaskT>> = ScheduleTree::new();
             // Make sure things aren't scheduled before the algorithm is finished.
             let last_deadline = tasks
                 .iter()
-                .map(|task| task.deadline)
+                .map(|task| task.deadline())
                 .max()
                 .ok_or(Error::Internal("last deadline not found"))?;
             let unscheduleables = segment.inverse().generate_ranges(start, last_deadline);
@@ -124,12 +157,15 @@ impl Schedule {
         }
     }
 
-    fn from_tree(tree: ScheduleTree<DateTime<Utc>, Item>) -> Schedule {
+    fn from_tree(tree: ScheduleTree<DateTime<Utc>, Item<TaskT>>) -> Schedule<TaskT>
+    where
+        TaskT: Task,
+    {
         let scheduled_tasks = tree
             .into_iter()
             .filter_map(|entry| match entry.data {
                 Item::Nothing => None,
-                Item::Task(task) => Some(ScheduledTask {
+                Item::Task(task) => Some(Scheduled {
                     task: (*task).clone(),
                     when: entry.start,
                 }),
@@ -140,13 +176,13 @@ impl Schedule {
 }
 
 #[derive(Debug, Hash, Clone)]
-enum Item {
-    Task(Rc<Task>),
+enum Item<TaskT> {
+    Task(Rc<TaskT>),
     Nothing,
 }
 
-impl PartialEq for Item {
-    fn eq(&self, other: &Item) -> bool {
+impl<TaskT: PartialEq> PartialEq for Item<TaskT> {
+    fn eq(&self, other: &Item<TaskT>) -> bool {
         match (self, other) {
             (Item::Task(task), Item::Task(other)) => task.eq(other),
             _ => false,
@@ -158,22 +194,22 @@ impl PartialEq for Item {
 // equivalence relation not reflexive for Nothing. The ScheduleTree needs it for
 // its internal hash map which it uses for data lookups. So this hack will cause
 // e.g. all Nothings to be un-unscheduleable.
-impl Eq for Item {}
+impl<TaskT: PartialEq> Eq for Item<TaskT> {}
 
-trait TaskScheduler {
+trait Scheduler<TaskT: Task> {
     fn schedule_according_to_importance(
         &mut self,
         start: DateTime<Utc>,
-        tasks: Vec<Rc<Task>>,
-    ) -> Result<()>;
+        tasks: Vec<Rc<TaskT>>,
+    ) -> Result<(), Error<TaskT>>;
     fn schedule_according_to_myrjam(
         &mut self,
         start: DateTime<Utc>,
-        tasks: Vec<Rc<Task>>,
-    ) -> Result<()>;
+        tasks: Vec<Rc<TaskT>>,
+    ) -> Result<(), Error<TaskT>>;
 }
 
-impl TaskScheduler for ScheduleTree<DateTime<Utc>, Item> {
+impl<TaskT: Task> Scheduler<TaskT> for ScheduleTree<DateTime<Utc>, Item<TaskT>> {
     /// Schedules `tasks` according to importance while making sure all deadlines are met.
     ///
     /// First, all tasks --- starting with the least important until the most important --- are
@@ -187,15 +223,20 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Item> {
     fn schedule_according_to_importance(
         &mut self,
         start: DateTime<Utc>,
-        mut tasks: Vec<Rc<Task>>,
-    ) -> Result<()> {
+        mut tasks: Vec<Rc<TaskT>>,
+    ) -> Result<(), Error<TaskT>> {
         // Start by scheduling the least important tasks closest to the deadline, and so on.
-        tasks.sort_by_key(|task| (task.importance, start.signed_duration_since(task.deadline)));
+        tasks.sort_by_key(|task| {
+            (
+                task.importance(),
+                start.signed_duration_since(task.deadline()),
+            )
+        });
         for task in &tasks {
-            if task.deadline < start + task.duration {
+            if task.deadline() < start + task.duration() {
                 return Err(Error::DeadlineMissed {
                     task: (**task).clone(),
-                    tense: if task.deadline < start {
+                    tense: if task.deadline() < start {
                         "missed"
                     } else {
                         "will miss"
@@ -203,8 +244,8 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Item> {
                 });
             }
             if !self.schedule_close_before(
-                task.deadline,
-                task.duration,
+                task.deadline(),
+                task.duration(),
                 Some(start),
                 Item::Task(Rc::clone(task)),
             ) {
@@ -224,7 +265,7 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Item> {
                     .ok_or_else(|| Error::Internal("I couldn't unschedule a task"))?;
                 if !self.schedule_close_after(
                     start,
-                    task.duration,
+                    task.duration(),
                     Some(scheduled_entry.end),
                     scheduled_entry.data,
                 ) {
@@ -257,15 +298,15 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Item> {
     fn schedule_according_to_myrjam(
         &mut self,
         start: DateTime<Utc>,
-        mut tasks: Vec<Rc<Task>>,
-    ) -> Result<()> {
+        mut tasks: Vec<Rc<TaskT>>,
+    ) -> Result<(), Error<TaskT>> {
         // Start by scheduling the least important tasks closest to the deadline, and so on.
-        tasks.sort_by_key(|task| task.importance);
+        tasks.sort_by_key(|task| task.importance());
         for task in tasks {
-            if task.deadline < start + task.duration {
+            if task.deadline() < start + task.duration() {
                 return Err(Error::DeadlineMissed {
                     task: (*task).clone(),
-                    tense: if task.deadline < start {
+                    tense: if task.deadline() < start {
                         "missed"
                     } else {
                         "will miss"
@@ -273,8 +314,8 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Item> {
                 });
             }
             if !self.schedule_close_before(
-                task.deadline,
-                task.duration,
+                task.deadline(),
+                task.duration(),
                 Some(start),
                 Item::Task(Rc::clone(&task)),
             ) {
@@ -299,7 +340,7 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Item> {
                     .ok_or_else(|| Error::Internal("I couldn't unschedule a task"))?;
                 if !self.schedule_close_after(
                     start,
-                    task.duration,
+                    task.duration(),
                     Some(scheduled_entry.end),
                     scheduled_entry.data,
                 ) {
@@ -311,7 +352,7 @@ impl TaskScheduler for ScheduleTree<DateTime<Utc>, Item> {
     }
 }
 
-impl fmt::Display for Task {
+impl fmt::Display for crate::Task {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.content)
     }
@@ -323,19 +364,50 @@ mod tests {
     use chrono::Duration;
 
     use super::*;
+    use crate::time_segment::UnnamedTimeSegment;
 
-    fn anytime() -> TimeSegment {
+    #[derive(Debug, PartialEq, Eq, Clone, Hash)]
+    struct Task {
+        pub content: String,
+        pub deadline: DateTime<Utc>,
+        pub duration: Duration,
+        pub importance: u32,
+    }
+
+    impl super::Task for Task {
+        fn deadline(&self) -> DateTime<Utc> {
+            self.deadline
+        }
+
+        fn duration(&self) -> Duration {
+            self.duration
+        }
+
+        fn importance(&self) -> u32 {
+            self.importance
+        }
+    }
+
+    impl Display for Task {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "{}", self.content)
+        }
+    }
+
+    type Result<T> = std::result::Result<T, Error<Task>>;
+
+    fn anytime() -> impl TimeSegment {
         let start = Utc::now();
         let period = Duration::weeks(1);
-        TimeSegment {
+        UnnamedTimeSegment {
             ranges: vec![start..start + period],
             start,
             period,
         }
     }
 
-    fn never() -> TimeSegment {
-        TimeSegment {
+    fn never() -> impl TimeSegment {
+        UnnamedTimeSegment {
             ranges: vec![],
             start: Utc::now(),
             period: Duration::weeks(1),
@@ -350,7 +422,7 @@ mod tests {
 
                     /// Schedules the given tasks in a time segment without
                     /// gaps.
-                    fn schedule(tasks: Vec<Task>, start: DateTime<Utc>) -> Result<Schedule> {
+                    fn schedule(tasks: Vec<Task>, start: DateTime<Utc>) -> Result<Schedule<Task>> {
                         Schedule::schedule_within_segment(start, tasks, anytime(), $strategy)
                     }
 
@@ -396,14 +468,12 @@ mod tests {
                     fn schedule_sets_of_two() {
                         let start = Utc::now();
                         let mut tasks = vec![Task {
-                            id: 0,
                             content: "find meaning to life".to_string(),
                             deadline: start + Duration::hours(1),
                             duration: Duration::hours(1),
                             importance: 6,
                         },
                         Task {
-                            id: 1,
                             content: "stop giving a fuck".to_string(),
                             deadline: start + Duration::hours(3),
                             duration: Duration::hours(2),
@@ -469,35 +539,31 @@ mod tests {
                         let now = Utc::now();
                         let tasks = vec![
                             Task {
-                                id: 1,
                                 content: "urgent-quick".to_string(),
                                 deadline: now + Duration::days(2),
                                 duration: Duration::minutes(20),
                                 importance: 4,
                             },
                             Task {
-                                id: 2,
                                 content: "important-quick".to_string(),
                                 deadline: now + Duration::days(2),
                                 duration: Duration::minutes(20),
                                 importance: 9,
                             },
                             Task {
-                                id: 3,
                                 content: "urgent-long".to_string(),
                                 deadline: now + Duration::days(4),
                                 duration: Duration::hours(2),
                                 importance: 4,
                             },
                             Task {
-                                id: 4,
                                 content: "important-long".to_string(),
                                 deadline: now + Duration::days(4),
                                 duration: Duration::hours(2),
                                 importance: 9,
                             },
                         ];
-                        let segment = TimeSegment {
+                        let segment = UnnamedTimeSegment {
                             ranges: vec![now + Duration::hours(10)..now + Duration::hours(12)],
                             start: now,
                             period: Duration::days(1),
@@ -523,7 +589,7 @@ mod tests {
                     fn fails_if_no_space_in_time_segment() {
                         let now = Utc::now();
                         // Segment: two hours daily
-                        let segment = TimeSegment {
+                        let segment = UnnamedTimeSegment {
                             ranges: vec![now + Duration::hours(10)..now + Duration::hours(12)],
                             start: now,
                             period: Duration::days(1),
@@ -532,7 +598,6 @@ mod tests {
                         // Trying to schedule tasks longer than two hours fails
                         let tasks = vec![
                             Task {
-                                id: 1,
                                 content: "too-long".to_string(),
                                 deadline: now + Duration::days(4),
                                 duration: Duration::hours(2) + Duration::seconds(1),
@@ -546,21 +611,18 @@ mod tests {
                         // to the segment, fails as well
                         let tasks = vec![
                             Task {
-                                id: 1,
                                 content: "task1".to_string(),
                                 deadline: now + Duration::hours(36) - Duration::seconds(1),
                                 duration: Duration::hours(1),
                                 importance: 5,
                             },
                             Task {
-                                id: 2,
                                 content: "task2".to_string(),
                                 deadline: now + Duration::hours(36) - Duration::seconds(1),
                                 duration: Duration::hours(1),
                                 importance: 5,
                             },
                             Task {
-                                id: 3,
                                 content: "task3".to_string(),
                                 deadline: now + Duration::hours(36) - Duration::seconds(1),
                                 duration: Duration::hours(2),
@@ -576,7 +638,8 @@ mod tests {
                         let tasks = taskset_of_myrjam();
                         let schedule = Schedule::schedule_within_segment(Utc::now(), tasks, never(), $strategy);
                         assert_matches!(schedule, Err(Error::NotEnoughTime { .. }));
-                        let schedule = Schedule::schedule_within_segment(Utc::now(), vec![], never(), $strategy);
+                        let tasks: Vec<Task> = vec![];
+                        let schedule = Schedule::schedule_within_segment(Utc::now(), tasks, never(), $strategy);
                         assert_matches!(schedule, Ok(Schedule(ref tasks)) if tasks.is_empty());
                     }
                 }
@@ -596,42 +659,36 @@ mod tests {
     fn taskset_of_myrjam() -> Vec<Task> {
         let now = Utc::now();
         let task1 = Task {
-            id: 1,
             content: "take over the world".to_string(),
             deadline: now + Duration::days(6 * 365),
             duration: Duration::hours(1000),
             importance: 10,
         };
         let task2 = Task {
-            id: 2,
             content: "make onion soup".to_string(),
             deadline: now + Duration::hours(2),
             duration: Duration::hours(1),
             importance: 3,
         };
         let task3 = Task {
-            id: 3,
             content: "publish Commander Mango 3".to_string(),
             deadline: now + Duration::days(365 / 2),
             duration: Duration::hours(50),
             importance: 6,
         };
         let task4 = Task {
-            id: 4,
             content: "sculpt".to_string(),
             deadline: now + Duration::days(30),
             duration: Duration::hours(10),
             importance: 4,
         };
         let task5 = Task {
-            id: 5,
             content: "organise birthday present".to_string(),
             deadline: now + Duration::days(30),
             duration: Duration::hours(5),
             importance: 10,
         };
         let task6 = Task {
-            id: 6,
             content: "make dentist appointment".to_string(),
             deadline: now + Duration::days(7),
             duration: Duration::minutes(10),
@@ -642,14 +699,12 @@ mod tests {
 
     fn taskset_just_in_time(now: DateTime<Utc>) -> Vec<Task> {
         let task1 = Task {
-            id: 1,
             content: "go to school".to_string(),
             deadline: now + Duration::days(23 * 365),
             duration: Duration::days(23 * 365),
             importance: 5,
         };
         let task2 = Task {
-            id: 2,
             content: "work till you die".to_string(),
             deadline: now + Duration::days(65 * 365),
             duration: Duration::days(42 * 365),
@@ -736,63 +791,54 @@ mod tests {
         let now = Utc::now();
         vec![
             Task {
-                id: 0,
                 content: "Think of plan to get rid of The Ring".to_string(),
                 deadline: now + Duration::days(12) + Duration::hours(15),
                 duration: Duration::days(2),
                 importance: 9,
             },
             Task {
-                id: 1,
                 content: "Ask advice from Saruman".to_string(),
                 deadline: now + Duration::days(8) + Duration::hours(15),
                 duration: Duration::days(3),
                 importance: 4,
             },
             Task {
-                id: 2,
                 content: "Visit Bilbo in Rivendel".to_string(),
                 deadline: now + Duration::days(13) + Duration::hours(15),
                 duration: Duration::days(2),
                 importance: 2,
             },
             Task {
-                id: 3,
                 content: "Make some firework for the hobbits".to_string(),
                 deadline: now + Duration::hours(33),
                 duration: Duration::hours(3),
                 importance: 3,
             },
             Task {
-                id: 4,
                 content: "Get riders of Rohan to help Gondor".to_string(),
                 deadline: now + Duration::days(21) + Duration::hours(15),
                 duration: Duration::days(7),
                 importance: 7,
             },
             Task {
-                id: 5,
                 content: "Find some good pipe-weed".to_string(),
                 deadline: now + Duration::days(2) + Duration::hours(15),
                 duration: Duration::hours(1),
                 importance: 8,
             },
             Task {
-                id: 6,
                 content: "Go shop for white clothing".to_string(),
                 deadline: now + Duration::days(33) + Duration::hours(15),
                 duration: Duration::hours(2),
                 importance: 3,
             },
             Task {
-                id: 7,
                 content: "Prepare epic-sounding one-liners".to_string(),
                 deadline: now + Duration::hours(34),
                 duration: Duration::hours(2),
                 importance: 10,
             },
             Task {
-                id: 8,
                 content: "Recharge staff batteries".to_string(),
                 deadline: now + Duration::days(1) + Duration::hours(15),
                 duration: Duration::minutes(30),
@@ -852,14 +898,12 @@ mod tests {
 
     fn taskset_with_missed_deadline() -> Vec<Task> {
         let task1 = Task {
-            id: 1,
             content: "conquer the world".to_string(),
             deadline: Utc::now() + Duration::days(3),
             duration: Duration::days(1),
             importance: 5,
         };
         let task2 = Task {
-            id: 2,
             content: "save the world".to_string(),
             deadline: Utc::now() - Duration::days(1),
             duration: Duration::minutes(5),
@@ -870,14 +914,12 @@ mod tests {
 
     fn taskset_with_impossible_deadline() -> Vec<Task> {
         let task1 = Task {
-            id: 1,
             content: "conquer the world".to_string(),
             deadline: Utc::now() + Duration::days(3),
             duration: Duration::days(1),
             importance: 5,
         };
         let task2 = Task {
-            id: 2,
             content: "save the world".to_string(),
             deadline: Utc::now() + Duration::hours(23),
             duration: Duration::days(1),
@@ -888,14 +930,12 @@ mod tests {
 
     fn taskset_impossible_combination(now: DateTime<Utc>) -> Vec<Task> {
         let task1 = Task {
-            id: 1,
             content: "Learn Rust".to_string(),
             deadline: now + Duration::days(1),
             duration: Duration::days(1),
             importance: 5,
         };
         let task2 = Task {
-            id: 2,
             content: "Program Eva".to_string(),
             deadline: now + Duration::days(2),
             duration: Duration::days(1) + Duration::minutes(1),

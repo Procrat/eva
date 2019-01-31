@@ -5,7 +5,7 @@ pub(crate) trait PrettyPrint {
     fn pretty_print(&self) -> String;
 }
 
-impl PrettyPrint for eva::Schedule {
+impl PrettyPrint for eva::Schedule<eva::Task> {
     fn pretty_print(&self) -> String {
         format!(
             "Schedule:\n  {}",
@@ -14,7 +14,7 @@ impl PrettyPrint for eva::Schedule {
     }
 }
 
-impl PrettyPrint for eva::ScheduledTask {
+impl PrettyPrint for eva::Scheduled<eva::Task> {
     fn pretty_print(&self) -> String {
         format!("{}: {}", self.when.pretty_print(), self.task.pretty_print())
     }

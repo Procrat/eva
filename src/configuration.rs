@@ -7,15 +7,15 @@ cfg_if! {
     if #[cfg(feature = "clock")] {
         #[derive(Debug)]
         pub struct Configuration {
-            pub database: Box<Database>,
+            pub database: Box<dyn Database>,
             pub scheduling_strategy: SchedulingStrategy,
         }
     } else {
         #[derive(Debug)]
         pub struct Configuration {
-            pub database: Box<Database>,
+            pub database: Box<dyn Database>,
             pub scheduling_strategy: SchedulingStrategy,
-            pub time_context: Box<TimeContext>,
+            pub time_context: Box<dyn TimeContext>,
         }
     }
 }
@@ -49,7 +49,7 @@ cfg_if! {
             fn now(&self) -> DateTime<Utc>;
         }
 
-        impl fmt::Debug for TimeContext {
+        impl fmt::Debug for dyn TimeContext {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 write!(f, "<time context>")
             }

@@ -109,13 +109,13 @@ fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
                 importance: parse::importance(importance)?,
                 time_segment_id: 0,
             };
-            let _task = block_on(eva::add(configuration, new_task))?;
+            let _task = block_on(eva::add_task(configuration, new_task))?;
             Ok(())
         }
         ("rm", Some(submatches)) => {
             let id = submatches.value_of("task-id").unwrap();
             let id = parse::id(id)?;
-            Ok(block_on(eva::remove(configuration, id))?)
+            Ok(block_on(eva::delete_task(configuration, id))?)
         }
         ("set", Some(submatches)) => {
             let field = submatches.value_of("property").unwrap();
@@ -125,7 +125,7 @@ fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
             Ok(set_field(configuration, field, id, value)?)
         }
         ("tasks", Some(_submatches)) => {
-            let tasks = block_on(eva::all(configuration))?;
+            let tasks = block_on(eva::tasks(configuration))?;
             println!("Tasks:");
             for task in &tasks {
                 // Indent all lines of task.pretty_print() by two spaces
@@ -144,7 +144,7 @@ fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
 }
 
 fn set_field(configuration: &Configuration, field: &str, id: u32, value: &str) -> Result<()> {
-    let mut task = block_on(eva::get(configuration, id))?;
+    let mut task = block_on(eva::get_task(configuration, id))?;
     match field {
         "content" => task.content = value.to_string(),
         "deadline" => task.deadline = parse::deadline(value)?,
@@ -152,7 +152,7 @@ fn set_field(configuration: &Configuration, field: &str, id: u32, value: &str) -
         "importance" => task.importance = parse::importance(value)?,
         _ => unreachable!(),
     };
-    Ok(block_on(eva::update(configuration, task))?)
+    Ok(block_on(eva::update_task(configuration, task))?)
 }
 
 fn handle_error(error: &Error) {

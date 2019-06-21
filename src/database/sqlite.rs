@@ -8,9 +8,13 @@ use futures::future::LocalFutureObj;
 
 use super::Database;
 use super::{Error, Result};
-use crate::time_segment::NamedTimeSegment as CrateTimeSegment;
+use crate::time_segment::{
+    NamedTimeSegment as CrateTimeSegment, NewNamedTimeSegment as CrateNewTimeSegment,
+};
 
 use self::tasks::dsl::tasks as task_table;
+use self::time_segment_ranges::dsl::time_segment_ranges as time_segment_range_table;
+use self::time_segments::dsl::time_segments as time_segment_table;
 
 pub struct DbConnection(SqliteConnection);
 
@@ -47,7 +51,7 @@ table! {
     }
 }
 
-#[derive(Debug, Queryable, Identifiable)]
+#[derive(Debug, Queryable, Identifiable, AsChangeset)]
 #[table_name = "time_segments"]
 struct TimeSegment {
     pub id: i32,
@@ -108,21 +112,21 @@ impl Database for DbConnection {
             let id = diesel::select(last_insert_rowid)
                 .get_result::<i32>(&self.0)
                 .map_err(|e| Error("while trying to fetch the id of the new task", e.into()))?;
-            let task = await!(self.find_task(id as u32))
+            let task = await!(self.get_task(id as u32))
                 .map_err(|e| Error("while trying to fetch the newly created task", e.into()))?;
             Ok(task)
         };
         LocalFutureObj::new(Box::new(future_task))
     }
 
-    fn remove_task<'a: 'b, 'b>(&'a self, id: u32) -> LocalFutureObj<'b, Result<()>> {
+    fn delete_task<'a: 'b, 'b>(&'a self, id: u32) -> LocalFutureObj<'b, Result<()>> {
         let future = async move {
             let amount_deleted = diesel::delete(task_table.find(id as i32))
                 .execute(&self.0)
-                .map_err(|e| Error("while trying to remove a task", e.into()))?;
+                .map_err(|e| Error("while trying to delete a task", e.into()))?;
             if amount_deleted != 1 {
                 return Err(Error(
-                    "while trying to remove a task",
+                    "while trying to delete a task",
                     failure::format_err!("{} task(s) were deleted", amount_deleted),
                 ));
             }
@@ -131,7 +135,7 @@ impl Database for DbConnection {
         LocalFutureObj::new(Box::new(future))
     }
 
-    fn find_task<'a: 'b, 'b>(&'a self, id: u32) -> LocalFutureObj<'b, Result<crate::Task>> {
+    fn get_task<'a: 'b, 'b>(&'a self, id: u32) -> LocalFutureObj<'b, Result<crate::Task>> {
         let task_result = try {
             let db_task = task_table
                 .find(id as i32)
@@ -188,6 +192,115 @@ impl Database for DbConnection {
                 .collect()
         };
         LocalFutureObj::new(Box::new(future::ready(tasks_result)))
+    }
+
+    fn add_time_segment<'a: 'b, 'b>(
+        &'a self,
+        time_segment: CrateNewTimeSegment,
+    ) -> LocalFutureObj<'b, Result<()>> {
+        let result = try {
+            diesel::insert_into(time_segment_table)
+                .values(&NewTimeSegment::from(time_segment.clone()))
+                .execute(&self.0)
+                .map_err(|e| Error("while trying to add a time segment", e.into()))?;
+            let id = diesel::select(last_insert_rowid)
+                .get_result::<i32>(&self.0)
+                .map_err(|e| Error("while trying to fetch the new time segment", e.into()))?;
+            for range in time_segment.ranges {
+                diesel::insert_into(time_segment_range_table)
+                    .values(&TimeSegmentRange {
+                        segment_id: id,
+                        start: range.start.timestamp() as i32,
+                        end: range.end.timestamp() as i32,
+                    })
+                    .execute(&self.0)
+                    .map_err(|e| Error("while trying to add a time segment", e.into()))?;
+            }
+        };
+        LocalFutureObj::new(Box::new(future::ready(result)))
+    }
+
+    fn delete_time_segment<'a: 'b, 'b>(
+        &'a self,
+        time_segment: CrateTimeSegment,
+    ) -> LocalFutureObj<'b, Result<()>> {
+        let db_time_segment = TimeSegment::from(time_segment);
+        let ranges = TimeSegmentRange::belonging_to(&db_time_segment);
+        let result = try {
+            let n_tasks = Task::belonging_to(&db_time_segment)
+                .count()
+                .get_result::<i64>(&self.0)
+                .map_err(|e| Error("while trying to delete a time segment", e.into()))?;
+            if n_tasks > 0 {
+                Err(Error(
+                    "while trying to delete a time segment",
+                    failure::format_err!(
+                        "There are still {} task(s) in this time segment. Please move them to \
+                         another time segment or delete them before deleting this segment.",
+                        n_tasks
+                    ),
+                ))?
+            }
+            diesel::delete(ranges)
+                .execute(&self.0)
+                .map_err(|e| Error("while trying to delete a time segment", e.into()))?;
+            let amount_deleted = diesel::delete(&db_time_segment)
+                .execute(&self.0)
+                .map_err(|e| Error("while trying to delete a time segment", e.into()))?;
+            if amount_deleted != 1 {
+                Err(Error(
+                    "while trying to delete a time segment",
+                    failure::format_err!("{} time segment(s) were deleted", amount_deleted),
+                ))?
+            }
+        };
+        LocalFutureObj::new(Box::new(future::ready(result)))
+    }
+
+    fn update_time_segment<'a: 'b, 'b>(
+        &'a self,
+        time_segment: CrateTimeSegment,
+    ) -> LocalFutureObj<'b, Result<()>> {
+        let db_time_segment = TimeSegment::from(time_segment.clone());
+        let ranges = TimeSegmentRange::belonging_to(&db_time_segment);
+        let result = try {
+            diesel::delete(ranges)
+                .execute(&self.0)
+                .map_err(|e| Error("while trying to update a time segment", e.into()))?;
+            for range in time_segment.ranges {
+                diesel::insert_into(time_segment_range_table)
+                    .values(&TimeSegmentRange {
+                        segment_id: time_segment.id as i32,
+                        start: range.start.timestamp() as i32,
+                        end: range.end.timestamp() as i32,
+                    })
+                    .execute(&self.0)
+                    .map_err(|e| Error("while trying to update a time segment", e.into()))?;
+            }
+            let amount_updated = diesel::update(&db_time_segment)
+                .set(&db_time_segment)
+                .execute(&self.0)
+                .map_err(|e| Error("while trying to update a time segment", e.into()))?;
+            if amount_updated != 1 {
+                Err(Error(
+                    "while trying to update a time segment",
+                    failure::format_err!("{} time segment(s) were updated", amount_updated),
+                ))?
+            }
+        };
+        LocalFutureObj::new(Box::new(future::ready(result)))
+    }
+
+    fn all_time_segments<'a: 'b, 'b>(
+        &'a self,
+    ) -> LocalFutureObj<'b, Result<Vec<CrateTimeSegment>>> {
+        let time_segments_result = try {
+            let db_time_segments = time_segments::table
+                .load::<TimeSegment>(&self.0)
+                .map_err(|e| Error("while trying to retrieve time segments", e.into()))?;
+            self.construct_time_segments(db_time_segments)?.collect()
+        };
+        LocalFutureObj::new(Box::new(future::ready(time_segments_result)))
     }
 }
 
@@ -257,6 +370,27 @@ impl From<crate::Task> for Task {
     }
 }
 
+impl From<CrateNewTimeSegment> for NewTimeSegment {
+    fn from(time_segment: CrateNewTimeSegment) -> NewTimeSegment {
+        NewTimeSegment {
+            name: time_segment.name,
+            start: time_segment.start.timestamp() as i32,
+            period: time_segment.period.num_seconds() as i32,
+        }
+    }
+}
+
+impl From<CrateTimeSegment> for TimeSegment {
+    fn from(time_segment: CrateTimeSegment) -> TimeSegment {
+        TimeSegment {
+            id: time_segment.id as i32,
+            name: time_segment.name,
+            start: time_segment.start.timestamp() as i32,
+            period: time_segment.period.num_seconds() as i32,
+        }
+    }
+}
+
 pub fn make_connection(database_url: &str) -> Result<DbConnection> {
     let connection = SqliteConnection::establish(database_url)
         .map_err(|e| Error("while trying to connect to the database", e.into()))?;
@@ -293,21 +427,12 @@ mod tests {
         block_on(connection.add_task(new_task.clone())).unwrap();
         let tasks = block_on(connection.all_tasks()).unwrap();
         assert_eq!(tasks.len(), 1);
-        assert_eq!(tasks[0].content, new_task.content);
-        assert_eq!(tasks[0].deadline.timestamp(), new_task.deadline.timestamp());
-        assert_eq!(tasks[0].duration, new_task.duration);
-        assert_eq!(tasks[0].importance, new_task.importance);
-        let same_task = block_on(connection.find_task(tasks[0].id)).unwrap();
-        assert_eq!(same_task.content, new_task.content);
-        assert_eq!(
-            same_task.deadline.timestamp(),
-            new_task.deadline.timestamp()
-        );
-        assert_eq!(same_task.duration, new_task.duration);
-        assert_eq!(same_task.importance, new_task.importance);
+        assert_eq!(tasks[0], new_task);
+        let same_task = block_on(connection.get_task(tasks[0].id)).unwrap();
+        assert_eq!(tasks[0], same_task);
 
-        // Removing a task leaves the database empty
-        block_on(connection.remove_task(tasks[0].id)).unwrap();
+        // Deleting a task leaves the database empty
+        block_on(connection.delete_task(tasks[0].id)).unwrap();
         assert!(block_on(connection.all_tasks()).unwrap().is_empty());
     }
 
@@ -329,21 +454,115 @@ mod tests {
         task.importance = 100;
         block_on(connection.update_task(task.clone())).unwrap();
 
-        let task_from_db = block_on(connection.find_task(task.id)).unwrap();
+        let task_from_db = block_on(connection.get_task(task.id)).unwrap();
         assert_eq!(task, task_from_db);
-        assert_eq!(task.content, "stuff");
-        assert_eq!(task.deadline, deadline);
-        assert_eq!(task.duration, Duration::minutes(7));
-        assert_eq!(task.importance, 100);
+    }
+
+    #[test]
+    fn test_default_time_segment() {
+        let connection = make_connection(":memory:").unwrap();
+
+        let time_segments = block_on(connection.all_time_segments()).unwrap();
+        assert_eq!(time_segments.len(), 1);
+        let time_segment = &time_segments[0];
+        assert_eq!(time_segment.id, 0);
+        assert_eq!(time_segment.name, "Default");
+        assert_eq!(time_segment.ranges.len(), 1);
+        assert_eq!(time_segment.start, time_segment.ranges[0].start);
+        assert_eq!(
+            time_segment.start + time_segment.period,
+            time_segment.ranges[0].end
+        );
+    }
+
+    #[test]
+    fn test_insert_query_and_delete_time_segment() {
+        let connection = make_connection(":memory:").unwrap();
+
+        let time_segment = test_time_segment();
+        block_on(connection.add_time_segment(time_segment.clone())).unwrap();
+
+        // There should be two segments now, the default and the one we added
+        let mut time_segments = block_on(connection.all_time_segments()).unwrap();
+        assert_eq!(time_segments.len(), 2);
+        assert_eq!(time_segments[0].name, "Default");
+        assert_eq!(time_segments[1], time_segment);
+
+        // We should be able to query a task we add to a certain segment
+        let mut task = test_task();
+        task.time_segment_id = 1;
+        let added_task = block_on(connection.add_task(task.clone())).unwrap();
+        let tasks_per_segment = block_on(connection.all_tasks_per_time_segment()).unwrap();
+        assert_eq!(tasks_per_segment.len(), 2);
+        assert_eq!(tasks_per_segment[0].0.name, "Default");
+        assert!(tasks_per_segment[0].1.is_empty());
+        assert_eq!(tasks_per_segment[1].0, time_segment);
+        assert_eq!(tasks_per_segment[1].1, [task]);
+
+        // We shouldn't be able to delete the segment because there's still a
+        // task in it
+        let time_segment = time_segments.pop().unwrap();
+        let result = block_on(connection.delete_time_segment(time_segment.clone()));
+        let error_message = format!("{}", result.unwrap_err());
+        assert_eq!(
+            error_message,
+            "A database error occurred while trying to delete a time segment: There are still 1 \
+             task(s) in this time segment. Please move them to another time segment or delete \
+             them before deleting this segment."
+                .to_string()
+        );
+        let time_segments = block_on(connection.all_time_segments()).unwrap();
+        assert_eq!(time_segments.len(), 2);
+
+        // Once we delete the task, we should also be able to delete the segment
+        block_on(connection.delete_task(added_task.id)).unwrap();
+        block_on(connection.delete_time_segment(time_segment)).unwrap();
+        let time_segments = block_on(connection.all_time_segments()).unwrap();
+        assert_eq!(time_segments.len(), 1);
+        assert_eq!(time_segments[0].name, "Default");
+    }
+
+    #[test]
+    fn test_insert_update_query_time_segment() {
+        let connection = make_connection(":memory:").unwrap();
+
+        block_on(connection.add_time_segment(test_time_segment())).unwrap();
+
+        let mut time_segment = block_on(connection.all_time_segments())
+            .unwrap()
+            .pop()
+            .unwrap();
+        time_segment.name = "changed name".to_string();
+        let start = Utc::now().with_nanosecond(0).unwrap() + Duration::days(1);
+        time_segment.start = start;
+        time_segment.ranges = vec![start..start + Duration::minutes(3)];
+        time_segment.period = Duration::minutes(42);
+        block_on(connection.update_time_segment(time_segment.clone())).unwrap();
+
+        let time_segment_from_db = block_on(connection.all_time_segments())
+            .unwrap()
+            .pop()
+            .unwrap();
+        assert_eq!(time_segment_from_db, time_segment);
     }
 
     fn test_task() -> crate::NewTask {
         crate::NewTask {
             content: "do me".to_string(),
-            deadline: Utc::now(),
+            deadline: Utc::now().with_nanosecond(0).unwrap(),
             duration: Duration::seconds(6),
             importance: 42,
             time_segment_id: 0,
+        }
+    }
+
+    fn test_time_segment() -> CrateNewTimeSegment {
+        let start = Utc::now().with_nanosecond(0).unwrap();
+        CrateNewTimeSegment {
+            name: "2h weekly".to_string(),
+            ranges: vec![start..start + Duration::hours(2)],
+            start,
+            period: Duration::weeks(1),
         }
     }
 }

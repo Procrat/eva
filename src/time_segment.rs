@@ -79,9 +79,18 @@ pub trait TimeSegment: Clone {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NamedTimeSegment {
     pub id: u32,
+    pub name: String,
+    // ranges is assumed to be in order
+    pub ranges: Vec<Range<DateTime<Utc>>>,
+    pub start: DateTime<Utc>,
+    pub period: Duration,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewNamedTimeSegment {
     pub name: String,
     // ranges is assumed to be in order
     pub ranges: Vec<Range<DateTime<Utc>>>,
@@ -122,6 +131,15 @@ impl TimeSegment for UnnamedTimeSegment {
 
     fn period(&self) -> Duration {
         self.period
+    }
+}
+
+impl PartialEq<NewNamedTimeSegment> for NamedTimeSegment {
+    fn eq(&self, other: &NewNamedTimeSegment) -> bool {
+        self.name == other.name
+            && self.ranges == other.ranges
+            && self.start == other.start
+            && self.period == other.period
     }
 }
 

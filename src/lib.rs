@@ -54,7 +54,17 @@ pub struct Task {
     pub time_segment_id: u32,
 }
 
-pub fn add<'a: 'b, 'b>(
+impl PartialEq<NewTask> for Task {
+    fn eq(&self, other: &NewTask) -> bool {
+        self.content == other.content
+            && self.deadline == other.deadline
+            && self.duration == other.duration
+            && self.importance == other.importance
+            && self.time_segment_id == other.time_segment_id
+    }
+}
+
+pub fn add_task<'a: 'b, 'b>(
     configuration: &'a Configuration,
     new_task: NewTask,
 ) -> impl Future<Output = Result<Task>> + 'b {
@@ -64,27 +74,24 @@ pub fn add<'a: 'b, 'b>(
         .map_err(Error::Database)
 }
 
-pub fn remove<'a: 'b, 'b>(
+pub fn delete_task<'a: 'b, 'b>(
     configuration: &'a Configuration,
     id: u32,
 ) -> impl Future<Output = Result<()>> + 'b {
     configuration
         .database
-        .remove_task(id)
+        .delete_task(id)
         .map_err(Error::Database)
 }
 
-pub fn get<'a: 'b, 'b>(
+pub fn get_task<'a: 'b, 'b>(
     configuration: &'a Configuration,
     id: u32,
 ) -> impl Future<Output = Result<Task>> + 'b {
-    configuration
-        .database
-        .find_task(id)
-        .map_err(Error::Database)
+    configuration.database.get_task(id).map_err(Error::Database)
 }
 
-pub fn update<'a: 'b, 'b>(
+pub fn update_task<'a: 'b, 'b>(
     configuration: &'a Configuration,
     task: Task,
 ) -> impl Future<Output = Result<()>> + 'b {
@@ -94,7 +101,7 @@ pub fn update<'a: 'b, 'b>(
         .map_err(Error::Database)
 }
 
-pub fn all<'a: 'b, 'b>(
+pub fn tasks<'a: 'b, 'b>(
     configuration: &'a Configuration,
 ) -> impl Future<Output = Result<Vec<Task>>> + 'b {
     configuration.database.all_tasks().map_err(Error::Database)
@@ -121,4 +128,43 @@ pub fn schedule<'a: 'c, 'b: 'c, 'c>(
             let schedule = Schedule::schedule(start, tasks_per_segment, strategy);
             future::ready(schedule).map_err(Error::Schedule)
         })
+}
+
+pub fn add_time_segment<'a: 'b, 'b>(
+    configuration: &'a Configuration,
+    time_segment: time_segment::NewNamedTimeSegment,
+) -> impl Future<Output = Result<()>> + 'b {
+    configuration
+        .database
+        .add_time_segment(time_segment)
+        .map_err(Error::Database)
+}
+
+pub fn delete_time_segment<'a: 'b, 'b>(
+    configuration: &'a Configuration,
+    time_segment: time_segment::NamedTimeSegment,
+) -> impl Future<Output = Result<()>> + 'b {
+    configuration
+        .database
+        .delete_time_segment(time_segment)
+        .map_err(Error::Database)
+}
+
+pub fn update_time_segment<'a: 'b, 'b>(
+    configuration: &'a Configuration,
+    time_segment: time_segment::NamedTimeSegment,
+) -> impl Future<Output = Result<()>> + 'b {
+    configuration
+        .database
+        .update_time_segment(time_segment)
+        .map_err(Error::Database)
+}
+
+pub fn time_segments<'a: 'b, 'b>(
+    configuration: &'a Configuration,
+) -> impl Future<Output = Result<Vec<time_segment::NamedTimeSegment>>> + 'b {
+    configuration
+        .database
+        .all_time_segments()
+        .map_err(Error::Database)
 }

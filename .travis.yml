@@ -1,5 +1,11 @@
 language: rust
 rust: nightly
 install: cargo build
-script: cargo test
 cache: cargo
+jobs:
+  include:
+    - script: cargo test
+    - script: cargo test --features sqlite
+    - script:
+      - cd eva-cli
+      - cargo test

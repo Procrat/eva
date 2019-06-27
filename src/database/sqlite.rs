@@ -468,10 +468,19 @@ mod tests {
         assert_eq!(time_segment.id, 0);
         assert_eq!(time_segment.name, "Default");
         assert_eq!(time_segment.ranges.len(), 1);
+        assert_eq!(time_segment.period, Duration::days(1));
         assert_eq!(time_segment.start, time_segment.ranges[0].start);
         assert_eq!(
-            time_segment.start + time_segment.period,
-            time_segment.ranges[0].end
+            time_segment
+                .start
+                .with_timezone(&Local)
+                .format("%H:%M:%S")
+                .to_string(),
+            "09:00:00"
+        );
+        assert_eq!(
+            time_segment.ranges[0].end - time_segment.ranges[0].start,
+            Duration::hours(8)
         );
     }
 

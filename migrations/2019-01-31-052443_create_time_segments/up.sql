@@ -11,11 +11,20 @@ CREATE TABLE time_segment_ranges (
   end INTEGER NOT NULL
 );
 
--- Add the default time segment that covers everything
+-- Add a default time segment: daily from 9 to 5
 INSERT INTO time_segments
-VALUES (0, 'Default', 0, 7 * 42 * 60 * 60);
+VALUES (
+  0,
+  'Default',
+  strftime('%s', 'now', 'weekday 1', 'start of day', 'utc', '9 hours'),
+  24 * 60 * 60
+);
 INSERT INTO time_segment_ranges
-VALUES (0, 0, 7 * 42 * 60 * 60);
+VALUES (
+  0,
+  strftime('%s', 'now', 'weekday 1', 'start of day', 'utc', '9 hours'),
+  strftime('%s', 'now', 'weekday 1', 'start of day', 'utc', '17 hours')
+);
 
 ALTER TABLE tasks
   ADD COLUMN time_segment_id NOT NULL DEFAULT 0;

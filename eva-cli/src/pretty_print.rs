@@ -22,12 +22,13 @@ impl PrettyPrint for eva::Scheduled<eva::Task> {
 
 impl PrettyPrint for DateTime<Utc> {
     fn pretty_print(&self) -> String {
-        let format = if self.year() == Utc::now().year() {
+        let local = self.with_timezone(&Local);
+        let format = if local.year() == Local::now().year() {
             "%a %-d %b %-H:%M"
         } else {
             "%a %-d %b %Y %-H:%M"
         };
-        self.format(format).to_string()
+        local.format(format).to_string()
     }
 }
 

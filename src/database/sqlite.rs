@@ -227,6 +227,7 @@ impl Database for DbConnection {
         let db_time_segment = TimeSegment::from(time_segment);
         let ranges = TimeSegmentRange::belonging_to(&db_time_segment);
         let result = try {
+            // Assert that there are no tasks in this time segment
             let n_tasks = Task::belonging_to(&db_time_segment)
                 .count()
                 .get_result::<i64>(&self.0)
@@ -241,6 +242,21 @@ impl Database for DbConnection {
                     ),
                 ))?
             }
+
+            // Assert that this isn't the last time segment
+            let n_time_segments = time_segments::table
+                .count()
+                .get_result::<i64>(&self.0)
+                .map_err(|e| Error("while trying to count time segments", e.into()))?;
+            if n_time_segments <= 1 {
+                Err(Error(
+                    "while trying to delete a time segment",
+                    failure::format_err!(
+                        "If you remove the last time segment, when should I schedule things?"
+                    ),
+                ))?
+            }
+
             diesel::delete(ranges)
                 .execute(&self.0)
                 .map_err(|e| Error("while trying to delete a time segment", e.into()))?;
@@ -462,9 +478,9 @@ mod tests {
     fn test_default_time_segment() {
         let connection = make_connection(":memory:").unwrap();
 
-        let time_segments = block_on(connection.all_time_segments()).unwrap();
+        let mut time_segments = block_on(connection.all_time_segments()).unwrap();
         assert_eq!(time_segments.len(), 1);
-        let time_segment = &time_segments[0];
+        let time_segment = time_segments.pop().unwrap();
         assert_eq!(time_segment.id, 0);
         assert_eq!(time_segment.name, "Default");
         assert_eq!(time_segment.ranges.len(), 1);
@@ -481,6 +497,14 @@ mod tests {
         assert_eq!(
             time_segment.ranges[0].end - time_segment.ranges[0].start,
             Duration::hours(8)
+        );
+
+        // We shouldn't be able to delete the last time segment
+        let result = block_on(connection.delete_time_segment(time_segment));
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "A database error occurred while trying to delete a time segment: If you remove the \
+             last time segment, when should I schedule things?"
         );
     }
 

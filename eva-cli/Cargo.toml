@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 app_dirs = "1.1"
 chrono = "0.4"
-clap = "2.26"
+clap = { version = "2.26", features = ["wrap_help"] }
 config = "0.9"
 eva = { version = "0.0.1", path = "../", features = ["sqlite"] }
 failure = "0.1"

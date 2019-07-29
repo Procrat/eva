@@ -135,6 +135,7 @@ pub struct NamedTimeSegment {
     pub ranges: Vec<Range<DateTime<Utc>>>,
     pub start: DateTime<Utc>,
     pub period: Duration,
+    pub hue: u16,
 }
 
 #[derive(Debug, Clone)]
@@ -144,6 +145,7 @@ pub struct NewNamedTimeSegment {
     pub ranges: Vec<Range<DateTime<Utc>>>,
     pub start: DateTime<Utc>,
     pub period: Duration,
+    pub hue: u16,
 }
 
 #[derive(Debug, Clone, PartialEq)]

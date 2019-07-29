@@ -58,6 +58,7 @@ struct TimeSegment {
     pub name: String,
     pub start: i32,
     pub period: i32,
+    pub hue: i32,
 }
 
 #[derive(Debug, Insertable)]
@@ -66,6 +67,7 @@ struct NewTimeSegment {
     pub name: String,
     pub start: i32,
     pub period: i32,
+    pub hue: i32,
 }
 
 table! {
@@ -74,6 +76,7 @@ table! {
         name -> VarChar,
         start -> Integer,
         period -> Integer,
+        hue -> Integer,
     }
 }
 
@@ -344,6 +347,7 @@ impl DbConnection {
                 ranges: ranges.collect(),
                 start: i32_to_datetime(segment.start),
                 period: i32_to_duration(segment.period),
+                hue: segment.hue as u16,
             }))
     }
 }
@@ -392,6 +396,7 @@ impl From<CrateNewTimeSegment> for NewTimeSegment {
             name: time_segment.name,
             start: time_segment.start.timestamp() as i32,
             period: time_segment.period.num_seconds() as i32,
+            hue: time_segment.hue as i32,
         }
     }
 }
@@ -403,6 +408,7 @@ impl From<CrateTimeSegment> for TimeSegment {
             name: time_segment.name,
             start: time_segment.start.timestamp() as i32,
             period: time_segment.period.num_seconds() as i32,
+            hue: time_segment.hue as i32,
         }
     }
 }
@@ -498,6 +504,7 @@ mod tests {
             time_segment.ranges[0].end - time_segment.ranges[0].start,
             Duration::hours(8)
         );
+        assert!(time_segment.hue < 360);
 
         // We shouldn't be able to delete the last time segment
         let result = block_on(connection.delete_time_segment(time_segment));
@@ -570,6 +577,7 @@ mod tests {
         time_segment.start = start;
         time_segment.ranges = vec![start..start + Duration::minutes(3)];
         time_segment.period = Duration::minutes(42);
+        time_segment.hue = 200;
         block_on(connection.update_time_segment(time_segment.clone())).unwrap();
 
         let time_segment_from_db = block_on(connection.all_time_segments())
@@ -596,6 +604,7 @@ mod tests {
             ranges: vec![start..start + Duration::hours(2)],
             start,
             period: Duration::weeks(1),
+            hue: 0,
         }
     }
 }

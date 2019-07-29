@@ -27,4 +27,4 @@ VALUES (
 );
 
 ALTER TABLE tasks
-  ADD COLUMN time_segment_id NOT NULL DEFAULT 0;
+  ADD COLUMN time_segment_id INTEGER NOT NULL DEFAULT 0;

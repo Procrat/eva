@@ -74,6 +74,7 @@ SUBCOMMANDS:
     rm          Removes a task
     schedule    Lets Eva suggest a schedule for your tasks
     set         Changes the deadline, duration, importance or content of an existing task
+    tasks       Lists your tasks in the order you added them
 ```
 
 ```
@@ -90,75 +91,53 @@ FLAGS:
 
 ARGS:
     <content>       What is it that you want to do?
-    <deadline>      When should it be finished? Give it in the format of '2 Aug
-                    2017 14:03'.
-    <duration>      How long do you estimate it will take? Give it in a (whole or
-                    decimal) number of hours.
+    <deadline>      When should it be finished? Give it in the format of '2 Aug 2017 14:03'.
+    <duration>      How long do you estimate it will take? Give it in a (whole or decimal) number of hours.
     <importance>    How important is this task to you on a scale from 1 to 10?
 ```
 
 ```
 $ date
-Mon Aug 21 08:00:00 NZST 2017
+Thu Aug  1 14:12:50 NZST 2019
 
-$ eva add 'Think of plan to get rid of The Ring' '3 Sep 2017 00:00' 48 9
+$ eva add 'Think of plan to get rid of The Ring' '14 Aug 2019 00:00' 8 9
 
-$ eva add 'Ask advice from Saruman' '30 Aug 2017 00:00' 48 4
+$ eva add 'Ask advice from Saruman' '10 Aug 2019 00:00' 8 4
 
-$ eva add 'Visit Bilbo in Rivendel' '4 Sep 2017 00:00' 48 2
+$ eva add 'Visit Bilbo in Rivendel' '15 Aug 2019 00:00' 8 2
 
-$ eva add 'Make some firework for the hobbits' '22 Aug 2017 18:00' 3 3
+$ eva add 'Make some firework for the hobbits' '2 Aug 2019 18:00' 3 3
 
-$ eva add 'Get riders of Rohan to help Gondor' '12 Sep 2017 00:00' 72 7
+$ eva add 'Get riders of Rohan to help Gondor' '23 Aug 2019 00:00' 8 7
 
-$ eva add 'Find some good pipe-weed' '24 Aug 2017 00:00' 1 8
+$ eva add 'Find some good pipe-weed' '4 Aug 2019 00:00' 1 8
 
-$ eva add 'Go shop for white clothing' '24 Sep 2017 00:00' 2 3
+$ eva add 'Go shop for white clothing' '4 Sep 2019 00:00' 2 3
 
-$ eva add 'Prepare epic-sounding one-liners' '22 Aug 2017 19:00' 2 10
+$ eva add 'Prepare epic-sounding one-liners' '2 Aug 2019 19:00' 2 10
 
-$ eva add 'Recharge staff batteries' '23 Aug 2017 00:00' 0.5 5
+$ eva add 'Recharge staff batteries' '3 Aug 2019 00:00' 0.5 5
 
 $ eva schedule
-Tasks:
-  1. Think of plan to get rid of The Ring
-    (deadline: Sun 3 Sep 0:00, duration: 48h0, importance: 9)
-  2. Ask advice from Saruman
-    (deadline: Wed 30 Aug 0:00, duration: 48h0, importance: 4)
-  3. Visit Bilbo in Rivendel
-    (deadline: Mon 4 Sep 0:00, duration: 48h0, importance: 2)
-  4. Make some firework for the hobbits
-    (deadline: Tue 22 Aug 18:00, duration: 3h0, importance: 3)
-  5. Get riders of Rohan to help Gondor
-    (deadline: Tue 12 Sep 0:00, duration: 72h0, importance: 7)
-  6. Find some good pipe-weed
-    (deadline: Thu 24 Aug 0:00, duration: 1h0, importance: 8)
-  7. Go shop for white clothing
-    (deadline: Sun 24 Sep 0:00, duration: 2h0, importance: 3)
-  8. Prepare epic-sounding one-liners
-    (deadline: Tue 22 Aug 19:00, duration: 2h0, importance: 10)
-  9. Recharge staff batteries
-    (deadline: Wed 23 Aug 0:00, duration: 0h30, importance: 5)
-
 Schedule:
-  Sun 20 Aug 20:00: 8. Prepare epic-sounding one-liners
-    (deadline: Tue 22 Aug 19:00, duration: 2h0, importance: 10)
-  Sun 20 Aug 22:00: 6. Find some good pipe-weed
-    (deadline: Thu 24 Aug 0:00, duration: 1h0, importance: 8)
-  Sun 20 Aug 23:00: 9. Recharge staff batteries
-    (deadline: Wed 23 Aug 0:00, duration: 0h30, importance: 5)
-  Sun 20 Aug 23:30: 4. Make some firework for the hobbits
-    (deadline: Tue 22 Aug 18:00, duration: 3h0, importance: 3)
-  Mon 21 Aug 2:30: 1. Think of plan to get rid of The Ring
-    (deadline: Sun 3 Sep 0:00, duration: 48h0, importance: 9)
-  Wed 23 Aug 2:30: 5. Get riders of Rohan to help Gondor
-    (deadline: Tue 12 Sep 0:00, duration: 72h0, importance: 7)
-  Sat 26 Aug 2:30: 2. Ask advice from Saruman
-    (deadline: Wed 30 Aug 0:00, duration: 48h0, importance: 4)
-  Mon 28 Aug 2:30: 7. Go shop for white clothing
-    (deadline: Sun 24 Sep 0:00, duration: 2h0, importance: 3)
-  Mon 28 Aug 4:30: 3. Visit Bilbo in Rivendel
-    (deadline: Mon 4 Sep 0:00, duration: 48h0, importance: 2)
+  Thu 1 Aug 14:23: 13. Prepare epic-sounding one-liners
+    (deadline: Fri 2 Aug 19:00, duration: 2h0, importance: 10)
+  Thu 1 Aug 16:23: 14. Recharge staff batteries
+    (deadline: Sat 3 Aug 0:00, duration: 0h30, importance: 5)
+  Fri 2 Aug 9:00: 9. Make some firework for the hobbits
+   (deadline: Fri 2 Aug 18:00, duration: 3h0, importance: 3)
+  Fri 2 Aug 12:00: 11. Find some good pipe-weed
+    (deadline: Sun 4 Aug 0:00, duration: 1h0, importance: 8)
+  Fri 2 Aug 13:00: 12. Go shop for white clothing
+    (deadline: Wed 4 Sep 0:00, duration: 2h0, importance: 3)
+  Sat 3 Aug 9:00: 7. Ask advice from Saruman
+   (deadline: Sat 10 Aug 0:00, duration: 8h0, importance: 4)
+  Sun 4 Aug 9:00: 6. Think of plan to get rid of The Ring
+   (deadline: Wed 14 Aug 0:00, duration: 8h0, importance: 9)
+  Mon 5 Aug 9:00: 8. Visit Bilbo in Rivendel
+   (deadline: Thu 15 Aug 0:00, duration: 8h0, importance: 2)
+  Tue 6 Aug 9:00: 10. Get riders of Rohan to help Gondor
+    (deadline: Fri 23 Aug 0:00, duration: 8h0, importance: 7)
 ```
 
 
@@ -195,10 +174,10 @@ database = "C:\\Users\\<username>\\AppData\\Roaming\\eva\\db.sqlite"
 - [x] Task persistence
 - [x] Minimal task management interface
 - [x] Automatic scheduling
-- [x] User configuration
+- [x] User configuration in CLI
 - [x] Abstract configuration interface
 - [x] [Web interface](https://github.com/Procrat/eva-web)
-- [ ] Time segmentation (e.g. sleep, working hours, morning rituals)
+- [x] Time segmentation (e.g. sleep, working hours, morning rituals)
 - [ ] Manual scheduling of fixed events
 - [ ] Recurring events
 
@@ -211,13 +190,11 @@ database = "C:\\Users\\<username>\\AppData\\Roaming\\eva\\db.sqlite"
 
 ### Possible future goals
 
-- Integration with desktop environment
+- Blocked tasks (while waiting for something or someone)
 - Time tracking + Pomodoro
-- Reflection (cfr. GTD)
-- Interactive terminal UI (possibly reusing [Procrat/eva-deprecated](https://github.com/Procrat/eva-deprecated), possibly with `ncurses`)
-- Scratchpad
-- Laudatory diary
-- Frozen tasks
+- Regular, fixed moments of reflection (see [GTD](https://gettingthingsdone.com/what-is-gtd/)), both to ensure your task list still reflects reality, but also to be motivated by the work already done
+- Way to make a brain dump and organise it later, at a fixed time
+- Backup data to a server and possibly sync with Eva on other devices
 
 
 ## Acknowledgements

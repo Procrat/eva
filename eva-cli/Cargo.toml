@@ -5,12 +5,12 @@ authors = ["Stijn Seghers <stijnseghers@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-app_dirs = "1.1"
+app_dirs = "1.2"
 chrono = "0.4"
-clap = { version = "2.26", features = ["wrap_help"] }
-config = { version = "0.9", default-features = false, features = ["toml"] }
+clap = { version = "2.33", features = ["wrap_help"] }
+config = { version = "0.10", default-features = false, features = ["toml"] }
 eva = { version = "0.0.1", path = "../", features = ["sqlite"] }
 failure = "0.1"
-futures-preview = "0.3.0-alpha.12"
-itertools = "0.7"
-shellexpand = "1.0"
+futures = "0.3"
+itertools = "0.8"
+shellexpand = "1.1"

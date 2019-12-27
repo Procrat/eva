@@ -184,7 +184,7 @@ enum Item<TaskT> {
 impl<TaskT: PartialEq> PartialEq for Item<TaskT> {
     fn eq(&self, other: &Item<TaskT>) -> bool {
         match (self, other) {
-            (Item::Task(task), Item::Task(other)) => task.eq(other),
+            (Self::Task(task), Self::Task(other)) => task.eq(other),
             _ => false,
         }
     }
@@ -640,7 +640,7 @@ mod tests {
                         assert_matches!(schedule, Err(Error::NotEnoughTime { .. }));
                         let tasks: Vec<Task> = vec![];
                         let schedule = Schedule::schedule_within_segment(Utc::now(), tasks, never(), $strategy);
-                        assert_matches!(schedule, Ok(Schedule(ref tasks)) if tasks.is_empty());
+                        assert_matches!(schedule, Ok(Schedule(tasks)) if tasks.is_empty());
                     }
                 }
              )*

@@ -28,9 +28,9 @@ pub enum SchedulingStrategy {
 
 impl SchedulingStrategy {
     pub fn as_str(&self) -> &'static str {
-        match *self {
-            SchedulingStrategy::Importance => "importance",
-            SchedulingStrategy::Urgency => "urgency",
+        match self {
+            Self::Importance => "importance",
+            Self::Urgency => "urgency",
         }
     }
 }

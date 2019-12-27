@@ -140,8 +140,7 @@ where
         // As last resort, try to schedule before current scope if min_start allows
         let scope = self
             .scope
-            .as_ref()
-            .cloned()
+            .as_mut()
             .expect("Internal error: scope could not be taken as ref");
         if min_start.map_or(true, |min_start| min_start <= scope.start - duration) {
             // Schedule on [scope.start - duration, scope.start]
@@ -213,8 +212,7 @@ where
         // As last resort, try to schedule after current scope if max_end allows
         let scope = self
             .scope
-            .as_ref()
-            .cloned()
+            .as_mut()
             .expect("Internal error: scope could not be taken as ref");
         if max_end.map_or(true, |max_end| scope.end + duration <= max_end) {
             // Schedule on [scope.end, scope.end + duration]

@@ -41,8 +41,8 @@ impl From<eva::Error> for Error {
 type Result<T> = std::result::Result<T, Error>;
 
 fn main() {
-    if let Err(ref error) = run() {
-        handle_error(error);
+    if let Err(error) = run() {
+        handle_error(&error);
     }
 }
 

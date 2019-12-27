@@ -1,5 +1,4 @@
 #![feature(box_patterns)]
-#![feature(async_await, await_macro)]
 #![feature(try_blocks)]
 
 #[cfg(feature = "sqlite")]

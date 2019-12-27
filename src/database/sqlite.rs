@@ -115,7 +115,9 @@ impl Database for DbConnection {
             let id = diesel::select(last_insert_rowid)
                 .get_result::<i32>(&self.0)
                 .map_err(|e| Error("while trying to fetch the id of the new task", e.into()))?;
-            let task = await!(self.get_task(id as u32))
+            let task = self
+                .get_task(id as u32)
+                .await
                 .map_err(|e| Error("while trying to fetch the newly created task", e.into()))?;
             Ok(task)
         };

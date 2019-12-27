@@ -1,15 +1,16 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use app_dirs;
-use app_dirs::{AppDataType, AppInfo};
 use config;
+use directories::ProjectDirs;
 use eva::configuration::{Configuration, SchedulingStrategy};
 use failure::Fail;
 use shellexpand;
 
 #[derive(Debug, Fail)]
 pub enum Error {
+    #[fail(display = "Unfortunately, only GNU/Linux, Mac OS and Windows are supported.")]
+    UnsupportedOS(),
     #[fail(display = "An error occurred while trying to read {}: {}", _0, _1)]
     Read(&'static str, #[cause] failure::Error),
     #[fail(display = "I could not create {}: {}", _0, _1)]
@@ -30,13 +31,10 @@ pub enum Error {
 
 type Result<T> = std::result::Result<T, Error>;
 
-const APP_INFO: AppInfo = AppInfo {
-    name: "eva",
-    author: "Stijn Seghers",
-};
-
 pub fn read() -> Result<Configuration> {
-    let config_filename = config_root()?.join("eva.toml");
+    let project_dirs = ProjectDirs::from("", "", "eva").ok_or_else(|| Error::UnsupportedOS())?;
+
+    let config_filename = project_dirs.config_dir().join("eva.toml");
     let config_filename = config_filename.to_str().ok_or_else(|| {
         Error::FileCreation(
             "my configuration directory",
@@ -46,7 +44,7 @@ pub fn read() -> Result<Configuration> {
 
     let mut configuration = config::Config::new();
 
-    set_defaults(&mut configuration)?
+    set_defaults(&mut configuration, &project_dirs)?
         .merge(config::File::with_name(config_filename).required(false))
         .map_err(|e| Error::Read("the local configuration file", e.into()))?
         .merge(config::Environment::with_prefix("eva"))
@@ -81,18 +79,11 @@ pub fn read() -> Result<Configuration> {
     })
 }
 
-fn config_root() -> Result<PathBuf> {
-    app_dirs::get_app_root(AppDataType::UserConfig, &APP_INFO)
-        .map_err(|e| Error::FileCreation("my configuration directory", e.into()))
-}
-
-fn data_root() -> Result<PathBuf> {
-    app_dirs::get_app_root(AppDataType::UserData, &APP_INFO)
-        .map_err(|e| Error::FileCreation("my data directory", e.into()))
-}
-
-fn set_defaults(configuration: &mut config::Config) -> Result<&mut config::Config> {
-    let db_filename = data_root()?.join("db.sqlite");
+fn set_defaults<'a>(
+    configuration: &'a mut config::Config,
+    project_dirs: &ProjectDirs,
+) -> Result<&'a mut config::Config> {
+    let db_filename = project_dirs.data_dir().join("db.sqlite");
     let db_filename = db_filename.to_str().ok_or_else(|| {
         Error::Default(
             "the database path",

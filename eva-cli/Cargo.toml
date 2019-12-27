@@ -5,10 +5,10 @@ authors = ["Stijn Seghers <stijnseghers@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-app_dirs = "1.2"
 chrono = "0.4"
 clap = { version = "2.33", features = ["wrap_help"] }
 config = { version = "0.10", default-features = false, features = ["toml"] }
+directories = "2.0"
 eva = { version = "0.0.1", path = "../", features = ["sqlite"] }
 failure = "0.1"
 futures = "0.3"

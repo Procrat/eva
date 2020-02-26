@@ -50,19 +50,19 @@ the latest nightly version of Rust. Second, add `$HOME/.cargo/bin` to your
 export PATH="$PATH:$HOME/.cargo/bin"
 ```
 
-Finally, to install Eva, clone this repository and run `cargo +nightly install`.
+Finally, to install Eva, clone this repository, and inside the eva-cli folder run `cargo +nightly install --path .`.
 
 
 ## Usage
 
-`eva --help` will get you started.
+`eva-cli --help` will get you started.
 
 ```
-$ eva --help
+$ eva-cli --help
 eva 0.0.1
 
 USAGE:
-    eva <SUBCOMMAND>
+    eva-cli <SUBCOMMAND>
 
 FLAGS:
     -h, --help       Prints help information
@@ -73,12 +73,13 @@ SUBCOMMANDS:
     help        Prints this message or the help of the given subcommand(s)
     rm          Removes a task
     schedule    Lets Eva suggest a schedule for your tasks
-    set         Changes the deadline, duration, importance or content of an existing task
+    set         Changes the deadline, duration, importance or content of an
+                existing task
     tasks       Lists your tasks in the order you added them
 ```
 
 ```
-$ eva help add
+$ eva-cli help add
 eva-add
 Adds a task
 
@@ -100,25 +101,25 @@ ARGS:
 $ date
 Thu Aug  1 14:12:50 NZST 2019
 
-$ eva add 'Think of plan to get rid of The Ring' '14 Aug 2019 00:00' 8 9
+$ eva-cli add 'Think of plan to get rid of The Ring' '14 Aug 2019 00:00' 8 9
 
-$ eva add 'Ask advice from Saruman' '10 Aug 2019 00:00' 8 4
+$ eva-cli add 'Ask advice from Saruman' '10 Aug 2019 00:00' 8 4
 
-$ eva add 'Visit Bilbo in Rivendel' '15 Aug 2019 00:00' 8 2
+$ eva-cli add 'Visit Bilbo in Rivendel' '15 Aug 2019 00:00' 8 2
 
-$ eva add 'Make some firework for the hobbits' '2 Aug 2019 18:00' 3 3
+$ eva-cli add 'Make some firework for the hobbits' '2 Aug 2019 18:00' 3 3
 
-$ eva add 'Get riders of Rohan to help Gondor' '23 Aug 2019 00:00' 8 7
+$ eva-cli add 'Get riders of Rohan to help Gondor' '23 Aug 2019 00:00' 8 7
 
-$ eva add 'Find some good pipe-weed' '4 Aug 2019 00:00' 1 8
+$ eva-cli add 'Find some good pipe-weed' '4 Aug 2019 00:00' 1 8
 
-$ eva add 'Go shop for white clothing' '4 Sep 2019 00:00' 2 3
+$ eva-cli add 'Go shop for white clothing' '4 Sep 2019 00:00' 2 3
 
-$ eva add 'Prepare epic-sounding one-liners' '2 Aug 2019 19:00' 2 10
+$ eva-cli add 'Prepare epic-sounding one-liners' '2 Aug 2019 19:00' 2 10
 
-$ eva add 'Recharge staff batteries' '3 Aug 2019 00:00' 0.5 5
+$ eva-cli add 'Recharge staff batteries' '3 Aug 2019 00:00' 0.5 5
 
-$ eva schedule
+$ eva-cli schedule
 Schedule:
   Thu 1 Aug 14:23: 13. Prepare epic-sounding one-liners
     (deadline: Fri 2 Aug 19:00, duration: 2h0, importance: 10)

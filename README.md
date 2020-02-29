@@ -50,7 +50,7 @@ the latest nightly version of Rust. Second, add `$HOME/.cargo/bin` to your
 export PATH="$PATH:$HOME/.cargo/bin"
 ```
 
-Finally, to install Eva, clone this repository and run `cargo +nightly install`.
+Finally, to install Eva, clone this repository, and inside the eva-cli folder run `cargo +nightly install --path .`.
 
 
 ## Usage
@@ -73,7 +73,8 @@ SUBCOMMANDS:
     help        Prints this message or the help of the given subcommand(s)
     rm          Removes a task
     schedule    Lets Eva suggest a schedule for your tasks
-    set         Changes the deadline, duration, importance or content of an existing task
+    set         Changes the deadline, duration, importance or content of an
+                existing task
     tasks       Lists your tasks in the order you added them
 ```
 

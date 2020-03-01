@@ -14,3 +14,7 @@ failure = "0.1"
 futures = "0.3"
 itertools = "0.8"
 shellexpand = "1.1"
+
+[[bin]]
+name = "eva"
+path = "src/main.rs"

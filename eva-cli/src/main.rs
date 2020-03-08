@@ -126,10 +126,14 @@ fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
         }
         ("tasks", Some(_submatches)) => {
             let tasks = block_on(eva::tasks(configuration))?;
-            println!("Tasks:");
-            for task in &tasks {
-                // Indent all lines of task.pretty_print() by two spaces
-                println!("  {}", task.pretty_print().split("\n").join("\n  "));
+            if tasks.len() == 0 {
+                println!("No tasks left. Add one with `eva add`.");
+            } else {
+                println!("Tasks:");
+                for task in &tasks {
+                    // Indent all lines of task.pretty_print() by two spaces
+                    println!("  {}", task.pretty_print().split("\n").join("\n  "));
+                }
             }
             Ok(())
         }

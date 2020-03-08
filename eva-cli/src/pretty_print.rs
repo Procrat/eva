@@ -7,10 +7,14 @@ pub(crate) trait PrettyPrint {
 
 impl PrettyPrint for eva::Schedule<eva::Task> {
     fn pretty_print(&self) -> String {
-        format!(
-            "Schedule:\n  {}",
-            self.0.iter().map(PrettyPrint::pretty_print).join("\n  ")
-        )
+        if self.0.len() == 0 {
+            format!("No tasks left. Add one with `eva add`.")
+        } else {
+            format!(
+                "Schedule:\n  {}",
+                self.0.iter().map(PrettyPrint::pretty_print).join("\n  ")
+            )
+        }
     }
 }
 

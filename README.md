@@ -15,6 +15,7 @@ useful however, so maybe you do too!
 The front end is developed in the [eva-web
 project](https://github.com/Procrat/eva-web).
 
+If you enjoy it so far and want to say thanks, you can [buy me a coffee ☕](https://ko-fi.com/procrat).
 
 ## Goal
 

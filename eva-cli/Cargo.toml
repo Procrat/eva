@@ -7,13 +7,13 @@ edition = "2018"
 [dependencies]
 chrono = "0.4"
 clap = { version = "2.33", features = ["wrap_help"] }
-config = { version = "0.10", default-features = false, features = ["toml"] }
-directories = "2.0"
+config = { version = "0.11", default-features = false, features = ["toml"] }
+directories = "3.0"
 eva = { version = "0.0.1", path = "../", features = ["sqlite"] }
 failure = "0.1"
 futures = "0.3"
-itertools = "0.8"
-shellexpand = "1.1"
+itertools = "0.10"
+shellexpand = "2.1"
 
 [[bin]]
 name = "eva"

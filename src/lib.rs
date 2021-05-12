@@ -8,6 +8,10 @@ extern crate diesel;
 #[macro_use]
 extern crate diesel_migrations;
 
+#[cfg(test)]
+#[macro_use]
+extern crate assert_matches;
+
 use chrono::prelude::*;
 use chrono::Duration;
 use derive_new::new;

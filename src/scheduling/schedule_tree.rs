@@ -675,7 +675,9 @@ mod tests {
         assert_matches!(
             tree.root,
             Some(Node::Leaf {
-                start: 5, end: 9, ..
+                start: 5,
+                end: 9,
+                ..
             })
         );
 
@@ -690,7 +692,9 @@ mod tests {
             Some(Node::Intermediate {
                 free: Range { start: 9, end: 13 },
                 right: box Node::Leaf {
-                    start: 13, end: 18, ..
+                    start: 13,
+                    end: 18,
+                    ..
                 },
                 ..
             })
@@ -708,15 +712,15 @@ mod tests {
             tree.root,
             Some(Node::Intermediate {
                 free: Range { start: 9, end: 10 },
-                right:
-                    box Node::Intermediate {
-                        free: Range { start: 12, end: 13 },
-                        left:
-                            box Node::Leaf {
-                                start: 10, end: 12, ..
-                            },
+                right: box Node::Intermediate {
+                    free: Range { start: 12, end: 13 },
+                    left: box Node::Leaf {
+                        start: 10,
+                        end: 12,
                         ..
                     },
+                    ..
+                },
                 ..
             })
         );
@@ -745,28 +749,31 @@ mod tests {
             Some(Node::Intermediate {
                 free: Range { start: 9, end: 9 },
                 left: box Node::Leaf {
-                    start: 5, end: 9, ..
+                    start: 5,
+                    end: 9,
+                    ..
                 },
-                right:
-                    box Node::Intermediate {
-                        free: Range { start: 10, end: 10 },
-                        left:
-                            box Node::Leaf {
-                                start: 9, end: 10, ..
-                            },
-                        right:
-                            box Node::Intermediate {
-                                free: Range { start: 12, end: 13 },
-                                left:
-                                    box Node::Leaf {
-                                        start: 10, end: 12, ..
-                                    },
-                                right:
-                                    box Node::Leaf {
-                                        start: 13, end: 18, ..
-                                    },
-                            },
+                right: box Node::Intermediate {
+                    free: Range { start: 10, end: 10 },
+                    left: box Node::Leaf {
+                        start: 9,
+                        end: 10,
+                        ..
                     },
+                    right: box Node::Intermediate {
+                        free: Range { start: 12, end: 13 },
+                        left: box Node::Leaf {
+                            start: 10,
+                            end: 12,
+                            ..
+                        },
+                        right: box Node::Leaf {
+                            start: 13,
+                            end: 18,
+                            ..
+                        },
+                    },
+                },
             })
         );
     }
@@ -784,7 +791,9 @@ mod tests {
         assert_matches!(
             tree.root,
             Some(Node::Leaf {
-                start: 13, end: 18, ..
+                start: 13,
+                end: 18,
+                ..
             })
         );
 
@@ -799,10 +808,14 @@ mod tests {
             Some(Node::Intermediate {
                 free: Range { start: 10, end: 13 },
                 left: box Node::Leaf {
-                    start: 5, end: 10, ..
+                    start: 5,
+                    end: 10,
+                    ..
                 },
                 right: box Node::Leaf {
-                    start: 13, end: 18, ..
+                    start: 13,
+                    end: 18,
+                    ..
                 },
             })
         );
@@ -815,10 +828,14 @@ mod tests {
             Some(Node::Intermediate {
                 free: Range { start: 10, end: 13 },
                 left: box Node::Leaf {
-                    start: 5, end: 10, ..
+                    start: 5,
+                    end: 10,
+                    ..
                 },
                 right: box Node::Leaf {
-                    start: 13, end: 18, ..
+                    start: 13,
+                    end: 18,
+                    ..
                 },
             })
         );
@@ -836,20 +853,23 @@ mod tests {
             Some(Node::Intermediate {
                 free: Range { start: 10, end: 11 },
                 left: box Node::Leaf {
-                    start: 5, end: 10, ..
+                    start: 5,
+                    end: 10,
+                    ..
                 },
-                right:
-                    box Node::Intermediate {
-                        free: Range { start: 13, end: 13 },
-                        left:
-                            box Node::Leaf {
-                                start: 11, end: 13, ..
-                            },
-                        right:
-                            box Node::Leaf {
-                                start: 13, end: 18, ..
-                            },
+                right: box Node::Intermediate {
+                    free: Range { start: 13, end: 13 },
+                    left: box Node::Leaf {
+                        start: 11,
+                        end: 13,
+                        ..
                     },
+                    right: box Node::Leaf {
+                        start: 13,
+                        end: 18,
+                        ..
+                    },
+                },
             })
         );
 
@@ -871,28 +891,31 @@ mod tests {
             Some(Node::Intermediate {
                 free: Range { start: 5, end: 5 },
                 left: box Node::Leaf {
-                    start: 3, end: 5, ..
+                    start: 3,
+                    end: 5,
+                    ..
                 },
-                right:
-                    box Node::Intermediate {
-                        free: Range { start: 10, end: 11 },
-                        left:
-                            box Node::Leaf {
-                                start: 5, end: 10, ..
-                            },
-                        right:
-                            box Node::Intermediate {
-                                free: Range { start: 13, end: 13 },
-                                left:
-                                    box Node::Leaf {
-                                        start: 11, end: 13, ..
-                                    },
-                                right:
-                                    box Node::Leaf {
-                                        start: 13, end: 18, ..
-                                    },
-                            },
+                right: box Node::Intermediate {
+                    free: Range { start: 10, end: 11 },
+                    left: box Node::Leaf {
+                        start: 5,
+                        end: 10,
+                        ..
                     },
+                    right: box Node::Intermediate {
+                        free: Range { start: 13, end: 13 },
+                        left: box Node::Leaf {
+                            start: 11,
+                            end: 13,
+                            ..
+                        },
+                        right: box Node::Leaf {
+                            start: 13,
+                            end: 18,
+                            ..
+                        },
+                    },
+                },
             })
         );
 
@@ -926,46 +949,48 @@ mod tests {
             tree.root,
             Some(Node::Intermediate {
                 free: Range { start: 18, end: 21 },
-                left:
-                    box Node::Intermediate {
-                        free: Range { start: 5, end: 5 },
-                        left:
-                            box Node::Leaf {
-                                start: 3, end: 5, ..
-                            },
-                        right:
-                            box Node::Intermediate {
-                                free: Range { start: 10, end: 11 },
-                                left:
-                                    box Node::Leaf {
-                                        start: 5, end: 10, ..
-                                    },
-                                right:
-                                    box Node::Intermediate {
-                                        free: Range { start: 13, end: 13 },
-                                        left:
-                                            box Node::Leaf {
-                                                start: 11, end: 13, ..
-                                            },
-                                        right:
-                                            box Node::Leaf {
-                                                start: 13, end: 18, ..
-                                            },
-                                    },
-                            },
+                left: box Node::Intermediate {
+                    free: Range { start: 5, end: 5 },
+                    left: box Node::Leaf {
+                        start: 3,
+                        end: 5,
+                        ..
                     },
-                right:
-                    box Node::Intermediate {
-                        free: Range { start: 24, end: 25 },
-                        left:
-                            box Node::Leaf {
-                                start: 21, end: 24, ..
+                    right: box Node::Intermediate {
+                        free: Range { start: 10, end: 11 },
+                        left: box Node::Leaf {
+                            start: 5,
+                            end: 10,
+                            ..
+                        },
+                        right: box Node::Intermediate {
+                            free: Range { start: 13, end: 13 },
+                            left: box Node::Leaf {
+                                start: 11,
+                                end: 13,
+                                ..
                             },
-                        right:
-                            box Node::Leaf {
-                                start: 25, end: 30, ..
+                            right: box Node::Leaf {
+                                start: 13,
+                                end: 18,
+                                ..
                             },
+                        },
                     },
+                },
+                right: box Node::Intermediate {
+                    free: Range { start: 24, end: 25 },
+                    left: box Node::Leaf {
+                        start: 21,
+                        end: 24,
+                        ..
+                    },
+                    right: box Node::Leaf {
+                        start: 25,
+                        end: 30,
+                        ..
+                    },
+                },
             })
         );
     }
@@ -983,7 +1008,9 @@ mod tests {
         assert_matches!(
             tree.root,
             Some(Node::Leaf {
-                start: 13, end: 18, ..
+                start: 13,
+                end: 18,
+                ..
             })
         );
 
@@ -998,10 +1025,14 @@ mod tests {
             Some(Node::Intermediate {
                 free: Range { start: 10, end: 13 },
                 left: box Node::Leaf {
-                    start: 5, end: 10, ..
+                    start: 5,
+                    end: 10,
+                    ..
                 },
                 right: box Node::Leaf {
-                    start: 13, end: 18, ..
+                    start: 13,
+                    end: 18,
+                    ..
                 },
             })
         );
@@ -1014,10 +1045,14 @@ mod tests {
             Some(Node::Intermediate {
                 free: Range { start: 10, end: 13 },
                 left: box Node::Leaf {
-                    start: 5, end: 10, ..
+                    start: 5,
+                    end: 10,
+                    ..
                 },
                 right: box Node::Leaf {
-                    start: 13, end: 18, ..
+                    start: 13,
+                    end: 18,
+                    ..
                 },
             })
         );
@@ -1035,20 +1070,23 @@ mod tests {
             Some(Node::Intermediate {
                 free: Range { start: 10, end: 10 },
                 left: box Node::Leaf {
-                    start: 5, end: 10, ..
+                    start: 5,
+                    end: 10,
+                    ..
                 },
-                right:
-                    box Node::Intermediate {
-                        free: Range { start: 13, end: 13 },
-                        left:
-                            box Node::Leaf {
-                                start: 10, end: 13, ..
-                            },
-                        right:
-                            box Node::Leaf {
-                                start: 13, end: 18, ..
-                            },
+                right: box Node::Intermediate {
+                    free: Range { start: 13, end: 13 },
+                    left: box Node::Leaf {
+                        start: 10,
+                        end: 13,
+                        ..
                     },
+                    right: box Node::Leaf {
+                        start: 13,
+                        end: 18,
+                        ..
+                    },
+                },
             })
         );
 
@@ -1069,28 +1107,31 @@ mod tests {
             tree.root,
             Some(Node::Intermediate {
                 free: Range { start: 18, end: 18 },
-                left:
-                    box Node::Intermediate {
-                        free: Range { start: 10, end: 10 },
-                        left:
-                            box Node::Leaf {
-                                start: 5, end: 10, ..
-                            },
-                        right:
-                            box Node::Intermediate {
-                                free: Range { start: 13, end: 13 },
-                                left:
-                                    box Node::Leaf {
-                                        start: 10, end: 13, ..
-                                    },
-                                right:
-                                    box Node::Leaf {
-                                        start: 13, end: 18, ..
-                                    },
-                            },
+                left: box Node::Intermediate {
+                    free: Range { start: 10, end: 10 },
+                    left: box Node::Leaf {
+                        start: 5,
+                        end: 10,
+                        ..
                     },
+                    right: box Node::Intermediate {
+                        free: Range { start: 13, end: 13 },
+                        left: box Node::Leaf {
+                            start: 10,
+                            end: 13,
+                            ..
+                        },
+                        right: box Node::Leaf {
+                            start: 13,
+                            end: 18,
+                            ..
+                        },
+                    },
+                },
                 right: box Node::Leaf {
-                    start: 18, end: 20, ..
+                    start: 18,
+                    end: 20,
+                    ..
                 },
             })
         );
@@ -1124,46 +1165,48 @@ mod tests {
             tree.root,
             Some(Node::Intermediate {
                 free: Range { start: 20, end: 21 },
-                left:
-                    box Node::Intermediate {
-                        free: Range { start: 18, end: 18 },
-                        left:
-                            box Node::Intermediate {
-                                free: Range { start: 10, end: 10 },
-                                left:
-                                    box Node::Leaf {
-                                        start: 5, end: 10, ..
-                                    },
-                                right:
-                                    box Node::Intermediate {
-                                        free: Range { start: 13, end: 13 },
-                                        left:
-                                            box Node::Leaf {
-                                                start: 10, end: 13, ..
-                                            },
-                                        right:
-                                            box Node::Leaf {
-                                                start: 13, end: 18, ..
-                                            },
-                                    },
+                left: box Node::Intermediate {
+                    free: Range { start: 18, end: 18 },
+                    left: box Node::Intermediate {
+                        free: Range { start: 10, end: 10 },
+                        left: box Node::Leaf {
+                            start: 5,
+                            end: 10,
+                            ..
+                        },
+                        right: box Node::Intermediate {
+                            free: Range { start: 13, end: 13 },
+                            left: box Node::Leaf {
+                                start: 10,
+                                end: 13,
+                                ..
                             },
-                        right:
-                            box Node::Leaf {
-                                start: 18, end: 20, ..
+                            right: box Node::Leaf {
+                                start: 13,
+                                end: 18,
+                                ..
                             },
+                        },
                     },
-                right:
-                    box Node::Intermediate {
-                        free: Range { start: 23, end: 25 },
-                        left:
-                            box Node::Leaf {
-                                start: 21, end: 23, ..
-                            },
-                        right:
-                            box Node::Leaf {
-                                start: 25, end: 30, ..
-                            },
+                    right: box Node::Leaf {
+                        start: 18,
+                        end: 20,
+                        ..
                     },
+                },
+                right: box Node::Intermediate {
+                    free: Range { start: 23, end: 25 },
+                    left: box Node::Leaf {
+                        start: 21,
+                        end: 23,
+                        ..
+                    },
+                    right: box Node::Leaf {
+                        start: 25,
+                        end: 30,
+                        ..
+                    },
+                },
             })
         );
     }
@@ -1182,10 +1225,19 @@ mod tests {
         assert_matches!(
             entry,
             Some(Entry {
-                start: 5, end: 9, ..
+                start: 5,
+                end: 9,
+                ..
             })
         );
-        assert_matches!(tree, ScheduleTree { root: None, scope: None, .. });
+        assert_matches!(
+            tree,
+            ScheduleTree {
+                root: None,
+                scope: None,
+                ..
+            }
+        );
         assert!(tree.data_map.is_empty());
 
         //   free:9..13
@@ -1199,14 +1251,18 @@ mod tests {
         assert_matches!(
             entry,
             Some(Entry {
-                start: 13, end: 18, ..
+                start: 13,
+                end: 18,
+                ..
             })
         );
         assert_eq!(tree.scope, Some(5..9));
         assert_matches!(
             tree.root,
             Some(Node::Leaf {
-                start: 5, end: 9, ..
+                start: 5,
+                end: 9,
+                ..
             })
         );
 
@@ -1221,14 +1277,18 @@ mod tests {
         assert_matches!(
             entry,
             Some(Entry {
-                start: 5, end: 9, ..
+                start: 5,
+                end: 9,
+                ..
             })
         );
         assert_eq!(tree.scope, Some(13..18));
         assert_matches!(
             tree.root,
             Some(Node::Leaf {
-                start: 13, end: 18, ..
+                start: 13,
+                end: 18,
+                ..
             })
         );
 
@@ -1252,7 +1312,9 @@ mod tests {
         assert_matches!(
             entry,
             Some(Entry {
-                start: 5, end: 9, ..
+                start: 5,
+                end: 9,
+                ..
             })
         );
         assert_eq!(tree.scope, Some(10..18));
@@ -1261,10 +1323,14 @@ mod tests {
             Some(Node::Intermediate {
                 free: Range { start: 12, end: 13 },
                 left: box Node::Leaf {
-                    start: 10, end: 12, ..
+                    start: 10,
+                    end: 12,
+                    ..
                 },
                 right: box Node::Leaf {
-                    start: 13, end: 18, ..
+                    start: 13,
+                    end: 18,
+                    ..
                 },
             })
         );
@@ -1273,14 +1339,18 @@ mod tests {
         assert_matches!(
             entry,
             Some(Entry {
-                start: 10, end: 12, ..
+                start: 10,
+                end: 12,
+                ..
             })
         );
         assert_eq!(tree.scope, Some(13..18));
         assert_matches!(
             tree.root,
             Some(Node::Leaf {
-                start: 13, end: 18, ..
+                start: 13,
+                end: 18,
+                ..
             })
         );
 
@@ -1309,7 +1379,9 @@ mod tests {
         assert_matches!(
             entry,
             Some(Entry {
-                start: 10, end: 12, ..
+                start: 10,
+                end: 12,
+                ..
             })
         );
         assert_eq!(tree.scope, Some(5..18));
@@ -1318,10 +1390,14 @@ mod tests {
             Some(Node::Intermediate {
                 free: Range { start: 9, end: 13 },
                 left: box Node::Leaf {
-                    start: 5, end: 9, ..
+                    start: 5,
+                    end: 9,
+                    ..
                 },
                 right: box Node::Leaf {
-                    start: 13, end: 18, ..
+                    start: 13,
+                    end: 18,
+                    ..
                 },
             })
         );
@@ -1330,14 +1406,18 @@ mod tests {
         assert_matches!(
             entry,
             Some(Entry {
-                start: 5, end: 9, ..
+                start: 5,
+                end: 9,
+                ..
             })
         );
         assert_eq!(tree.scope, Some(13..18));
         assert_matches!(
             tree.root,
             Some(Node::Leaf {
-                start: 13, end: 18, ..
+                start: 13,
+                end: 18,
+                ..
             })
         );
 
@@ -1345,10 +1425,19 @@ mod tests {
         assert_matches!(
             entry,
             Some(Entry {
-                start: 13, end: 18, ..
+                start: 13,
+                end: 18,
+                ..
             })
         );
-        assert_matches!(tree, ScheduleTree { root: None, scope: None, .. });
+        assert_matches!(
+            tree,
+            ScheduleTree {
+                root: None,
+                scope: None,
+                ..
+            }
+        );
         assert!(tree.data_map.is_empty());
     }
 

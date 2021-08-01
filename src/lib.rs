@@ -1,5 +1,4 @@
 #![feature(box_patterns)]
-#![feature(try_blocks)]
 
 #[cfg(feature = "sqlite")]
 #[macro_use]
@@ -16,7 +15,6 @@ use chrono::prelude::*;
 use chrono::Duration;
 use derive_new::new;
 use failure::Fail;
-use futures::prelude::*;
 
 use crate::configuration::{Configuration, SchedulingStrategy};
 
@@ -67,53 +65,47 @@ impl PartialEq<NewTask> for Task {
     }
 }
 
-pub fn add_task<'a: 'b, 'b>(
-    configuration: &'a Configuration,
-    new_task: NewTask,
-) -> impl Future<Output = Result<Task>> + 'b {
+pub async fn add_task(configuration: &Configuration, new_task: NewTask) -> Result<Task> {
     configuration
         .database
         .add_task(new_task)
+        .await
         .map_err(Error::Database)
 }
 
-pub fn delete_task<'a: 'b, 'b>(
-    configuration: &'a Configuration,
-    id: u32,
-) -> impl Future<Output = Result<()>> + 'b {
+pub async fn delete_task(configuration: &Configuration, id: u32) -> Result<()> {
     configuration
         .database
         .delete_task(id)
+        .await
         .map_err(Error::Database)
 }
 
-pub fn get_task<'a: 'b, 'b>(
-    configuration: &'a Configuration,
-    id: u32,
-) -> impl Future<Output = Result<Task>> + 'b {
-    configuration.database.get_task(id).map_err(Error::Database)
+pub async fn get_task(configuration: &Configuration, id: u32) -> Result<Task> {
+    configuration
+        .database
+        .get_task(id)
+        .await
+        .map_err(Error::Database)
 }
 
-pub fn update_task<'a: 'b, 'b>(
-    configuration: &'a Configuration,
-    task: Task,
-) -> impl Future<Output = Result<()>> + 'b {
+pub async fn update_task(configuration: &Configuration, task: Task) -> Result<()> {
     configuration
         .database
         .update_task(task)
+        .await
         .map_err(Error::Database)
 }
 
-pub fn tasks<'a: 'b, 'b>(
-    configuration: &'a Configuration,
-) -> impl Future<Output = Result<Vec<Task>>> + 'b {
-    configuration.database.all_tasks().map_err(Error::Database)
+pub async fn tasks(configuration: &Configuration) -> Result<Vec<Task>> {
+    configuration
+        .database
+        .all_tasks()
+        .await
+        .map_err(Error::Database)
 }
 
-pub fn schedule<'a: 'c, 'b: 'c, 'c>(
-    configuration: &'a Configuration,
-    strategy: &'b str,
-) -> impl Future<Output = Result<Schedule<Task>>> + 'c {
+pub async fn schedule(configuration: &Configuration, strategy: &str) -> Result<Schedule<Task>> {
     let strategy = match strategy {
         "importance" => SchedulingStrategy::Importance,
         "urgency" => SchedulingStrategy::Urgency,
@@ -126,48 +118,52 @@ pub fn schedule<'a: 'c, 'b: 'c, 'c>(
     configuration
         .database
         .all_tasks_per_time_segment()
+        .await
         .map_err(Error::Database)
         .and_then(move |tasks_per_segment| {
-            let schedule = Schedule::schedule(start, tasks_per_segment, strategy);
-            future::ready(schedule).map_err(Error::Schedule)
+            Schedule::schedule(start, tasks_per_segment, strategy).map_err(Error::Schedule)
         })
 }
 
-pub fn add_time_segment<'a: 'b, 'b>(
-    configuration: &'a Configuration,
+pub async fn add_time_segment(
+    configuration: &Configuration,
     time_segment: time_segment::NewNamedTimeSegment,
-) -> impl Future<Output = Result<()>> + 'b {
+) -> Result<()> {
     configuration
         .database
         .add_time_segment(time_segment)
+        .await
         .map_err(Error::Database)
 }
 
-pub fn delete_time_segment<'a: 'b, 'b>(
-    configuration: &'a Configuration,
+pub async fn delete_time_segment(
+    configuration: &Configuration,
     time_segment: time_segment::NamedTimeSegment,
-) -> impl Future<Output = Result<()>> + 'b {
+) -> Result<()> {
     configuration
         .database
         .delete_time_segment(time_segment)
+        .await
         .map_err(Error::Database)
 }
 
-pub fn update_time_segment<'a: 'b, 'b>(
-    configuration: &'a Configuration,
+pub async fn update_time_segment(
+    configuration: &Configuration,
     time_segment: time_segment::NamedTimeSegment,
-) -> impl Future<Output = Result<()>> + 'b {
+) -> Result<()> {
     configuration
         .database
         .update_time_segment(time_segment)
+        .await
         .map_err(Error::Database)
 }
 
-pub fn time_segments<'a: 'b, 'b>(
-    configuration: &'a Configuration,
-) -> impl Future<Output = Result<Vec<time_segment::NamedTimeSegment>>> + 'b {
+pub async fn time_segments(
+    configuration: &Configuration,
+) -> Result<Vec<time_segment::NamedTimeSegment>> {
     configuration
         .database
         .all_time_segments()
+        .await
         .map_err(Error::Database)
 }

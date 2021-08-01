@@ -10,15 +10,16 @@ clock = ["chrono/clock"]
 sqlite = ["diesel/sqlite", "diesel_migrations/sqlite"]
 
 [dependencies]
+async-trait = "0.1"
 cfg-if = "1.0"
 chrono = { version = "0.4", default-features = false, features = ["oldtime"] }
 derive-new = "0.5"
-diesel = { version = "1.4", optional = true }
+diesel = { version = "1.4", default-features = false, features = ["r2d2"], optional = true }
 diesel_migrations = { version = "1.4", optional = true }
 failure = "0.1"
-futures = "0.3"
 itertools = "0.10"
 take_mut = "0.2"
 
 [dev-dependencies]
 assert_matches = "1.5"
+futures = "0.3"

@@ -1,7 +1,7 @@
 use std::fmt;
 
+use async_trait::async_trait;
 use failure::Fail;
-use futures::future::LocalFutureObj;
 
 use crate::time_segment::{NamedTimeSegment as TimeSegment, NewNamedTimeSegment as NewTimeSegment};
 use crate::{NewTask, Task};
@@ -15,29 +15,19 @@ pub struct Error(pub &'static str, #[cause] pub failure::Error);
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[async_trait]
 pub trait Database {
-    fn add_task<'a: 'b, 'b>(&'a self, task: NewTask) -> LocalFutureObj<'b, Result<Task>>;
-    fn delete_task<'a: 'b, 'b>(&'a self, id: u32) -> LocalFutureObj<'b, Result<()>>;
-    fn get_task<'a: 'b, 'b>(&'a self, id: u32) -> LocalFutureObj<'b, Result<Task>>;
-    fn update_task<'a: 'b, 'b>(&'a self, task: Task) -> LocalFutureObj<'b, Result<()>>;
-    fn all_tasks<'a: 'b, 'b>(&'a self) -> LocalFutureObj<'b, Result<Vec<Task>>>;
-    fn all_tasks_per_time_segment<'a: 'b, 'b>(
-        &'a self,
-    ) -> LocalFutureObj<'b, Result<Vec<(TimeSegment, Vec<Task>)>>>;
+    async fn add_task(&self, task: NewTask) -> Result<Task>;
+    async fn delete_task(&self, id: u32) -> Result<()>;
+    async fn get_task(&self, id: u32) -> Result<Task>;
+    async fn update_task(&self, task: Task) -> Result<()>;
+    async fn all_tasks(&self) -> Result<Vec<Task>>;
+    async fn all_tasks_per_time_segment(&self) -> Result<Vec<(TimeSegment, Vec<Task>)>>;
 
-    fn add_time_segment<'a: 'b, 'b>(
-        &'a self,
-        time_segment: NewTimeSegment,
-    ) -> LocalFutureObj<'b, Result<()>>;
-    fn delete_time_segment<'a: 'b, 'b>(
-        &'a self,
-        time_segment: TimeSegment,
-    ) -> LocalFutureObj<'b, Result<()>>;
-    fn update_time_segment<'a: 'b, 'b>(
-        &'a self,
-        time_segment: TimeSegment,
-    ) -> LocalFutureObj<'b, Result<()>>;
-    fn all_time_segments<'a: 'b, 'b>(&'a self) -> LocalFutureObj<'b, Result<Vec<TimeSegment>>>;
+    async fn add_time_segment(&self, time_segment: NewTimeSegment) -> Result<()>;
+    async fn delete_time_segment(&self, time_segment: TimeSegment) -> Result<()>;
+    async fn update_time_segment(&self, time_segment: TimeSegment) -> Result<()>;
+    async fn all_time_segments(&self) -> Result<Vec<TimeSegment>>;
 }
 
 impl fmt::Debug for dyn Database {

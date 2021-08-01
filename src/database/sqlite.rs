@@ -1,10 +1,10 @@
 use std::io;
 
+use async_trait::async_trait;
 use chrono::prelude::*;
 use chrono::Duration;
 use diesel::prelude::*;
-use futures::future;
-use futures::future::LocalFutureObj;
+use diesel::r2d2;
 
 use super::Database;
 use super::{Error, Result};
@@ -16,7 +16,7 @@ use self::tasks::dsl::tasks as task_table;
 use self::time_segment_ranges::dsl::time_segment_ranges as time_segment_range_table;
 use self::time_segments::dsl::time_segments as time_segment_table;
 
-pub struct DbConnection(SqliteConnection);
+pub struct DbConnection(r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>);
 
 #[derive(Debug, Clone, PartialEq, Queryable, Identifiable, AsChangeset, Associations)]
 #[belongs_to(TimeSegment)]
@@ -102,236 +102,208 @@ embed_migrations!();
 
 no_arg_sql_function!(last_insert_rowid, diesel::sql_types::Integer);
 
+#[async_trait]
 impl Database for DbConnection {
-    fn add_task<'a: 'b, 'b>(
-        &'a self,
-        task: crate::NewTask,
-    ) -> LocalFutureObj<'b, Result<crate::Task>> {
-        let future_task = async move {
-            diesel::insert_into(task_table)
-                .values(&NewTask::from(task))
-                .execute(&self.0)
-                .map_err(|e| Error("while trying to add a task", e.into()))?;
-            let id = diesel::select(last_insert_rowid)
-                .get_result::<i32>(&self.0)
-                .map_err(|e| Error("while trying to fetch the id of the new task", e.into()))?;
-            let task = self
-                .get_task(id as u32)
-                .await
-                .map_err(|e| Error("while trying to fetch the newly created task", e.into()))?;
-            Ok(task)
-        };
-        LocalFutureObj::new(Box::new(future_task))
+    async fn add_task(&self, task: crate::NewTask) -> Result<crate::Task> {
+        diesel::insert_into(task_table)
+            .values(&NewTask::from(task))
+            .execute(&self.get_connection()?)
+            .map_err(|e| Error("while trying to add a task", e.into()))?;
+        let id = diesel::select(last_insert_rowid)
+            .get_result::<i32>(&self.get_connection()?)
+            .map_err(|e| Error("while trying to fetch the id of the new task", e.into()))?;
+        let task = self
+            .get_task(id as u32)
+            .await
+            .map_err(|e| Error("while trying to fetch the newly created task", e.into()))?;
+        Ok(task)
     }
 
-    fn delete_task<'a: 'b, 'b>(&'a self, id: u32) -> LocalFutureObj<'b, Result<()>> {
-        let future = async move {
-            let amount_deleted = diesel::delete(task_table.find(id as i32))
-                .execute(&self.0)
-                .map_err(|e| Error("while trying to delete a task", e.into()))?;
-            if amount_deleted != 1 {
-                return Err(Error(
-                    "while trying to delete a task",
-                    failure::format_err!("{} task(s) were deleted", amount_deleted),
-                ));
-            }
-            Ok(())
-        };
-        LocalFutureObj::new(Box::new(future))
+    async fn delete_task(&self, id: u32) -> Result<()> {
+        let amount_deleted = diesel::delete(task_table.find(id as i32))
+            .execute(&self.get_connection()?)
+            .map_err(|e| Error("while trying to delete a task", e.into()))?;
+        if amount_deleted != 1 {
+            return Err(Error(
+                "while trying to delete a task",
+                failure::format_err!("{} task(s) were deleted", amount_deleted),
+            ));
+        }
+        Ok(())
     }
 
-    fn get_task<'a: 'b, 'b>(&'a self, id: u32) -> LocalFutureObj<'b, Result<crate::Task>> {
-        let task_result = try {
-            let db_task = task_table
-                .find(id as i32)
-                .get_result::<Task>(&self.0)
-                .map_err(|e| Error("while trying to find a task", e.into()))?;
-            crate::Task::from(db_task)
-        };
-        LocalFutureObj::new(Box::new(future::ready(task_result)))
+    async fn get_task(&self, id: u32) -> Result<crate::Task> {
+        let db_task = task_table
+            .find(id as i32)
+            .get_result::<Task>(&self.get_connection()?)
+            .map_err(|e| Error("while trying to find a task", e.into()))?;
+        Ok(crate::Task::from(db_task))
     }
 
-    fn update_task<'a: 'b, 'b>(&'a self, task: crate::Task) -> LocalFutureObj<'b, Result<()>> {
+    async fn update_task(&self, task: crate::Task) -> Result<()> {
         let db_task = Task::from(task);
-        let future = async move {
-            let amount_updated = diesel::update(&db_task)
-                .set(&db_task)
-                .execute(&self.0)
-                .map_err(|e| Error("while trying to update a task", e.into()))?;
-            if amount_updated != 1 {
-                return Err(Error(
-                    "while trying to update a task",
-                    failure::format_err!("{} task(s) were updated", amount_updated),
-                ));
-            }
-            Ok(())
-        };
-        LocalFutureObj::new(Box::new(future))
+        let amount_updated = diesel::update(&db_task)
+            .set(&db_task)
+            .execute(&self.get_connection()?)
+            .map_err(|e| Error("while trying to update a task", e.into()))?;
+        if amount_updated != 1 {
+            return Err(Error(
+                "while trying to update a task",
+                failure::format_err!("{} task(s) were updated", amount_updated),
+            ));
+        }
+        Ok(())
     }
 
-    fn all_tasks<'a: 'b, 'b>(&'a self) -> LocalFutureObj<'b, Result<Vec<crate::Task>>> {
-        let tasks_result = try {
-            let db_tasks = task_table
-                .load::<Task>(&self.0)
-                .map_err(|e| Error("while trying to retrieve tasks", e.into()))?;
-            db_tasks.into_iter().map(crate::Task::from).collect()
-        };
-        LocalFutureObj::new(Box::new(future::ready(tasks_result)))
+    async fn all_tasks(&self) -> Result<Vec<crate::Task>> {
+        let db_tasks = task_table
+            .load::<Task>(&self.get_connection()?)
+            .map_err(|e| Error("while trying to retrieve tasks", e.into()))?;
+        Ok(db_tasks.into_iter().map(crate::Task::from).collect())
     }
 
-    fn all_tasks_per_time_segment<'a: 'b, 'b>(
-        &'a self,
-    ) -> LocalFutureObj<'b, Result<Vec<(CrateTimeSegment, Vec<crate::Task>)>>> {
-        let tasks_result = try {
-            let db_time_segments = time_segments::table
-                .load::<TimeSegment>(&self.0)
-                .map_err(|e| Error("while trying to retrieve time segments", e.into()))?;
-            let tasks = Task::belonging_to(&db_time_segments)
-                .load::<Task>(&self.0)
-                .map_err(|e| Error("while trying to retrieve tasks", e.into()))?
-                .grouped_by(&db_time_segments)
-                .into_iter()
-                .map(|db_tasks| db_tasks.into_iter().map(crate::Task::from).collect());
-            self.construct_time_segments(db_time_segments)?
-                .zip(tasks)
-                .collect()
-        };
-        LocalFutureObj::new(Box::new(future::ready(tasks_result)))
+    async fn all_tasks_per_time_segment(
+        &self,
+    ) -> Result<Vec<(CrateTimeSegment, Vec<crate::Task>)>> {
+        let db_time_segments = time_segments::table
+            .load::<TimeSegment>(&self.get_connection()?)
+            .map_err(|e| Error("while trying to retrieve time segments", e.into()))?;
+        let tasks = Task::belonging_to(&db_time_segments)
+            .load::<Task>(&self.get_connection()?)
+            .map_err(|e| Error("while trying to retrieve tasks", e.into()))?
+            .grouped_by(&db_time_segments)
+            .into_iter()
+            .map(|db_tasks| db_tasks.into_iter().map(crate::Task::from).collect());
+        Ok(self
+            .construct_time_segments(db_time_segments)?
+            .zip(tasks)
+            .collect())
     }
 
-    fn add_time_segment<'a: 'b, 'b>(
-        &'a self,
-        time_segment: CrateNewTimeSegment,
-    ) -> LocalFutureObj<'b, Result<()>> {
-        let result = try {
-            diesel::insert_into(time_segment_table)
-                .values(&NewTimeSegment::from(time_segment.clone()))
-                .execute(&self.0)
+    async fn add_time_segment(&self, time_segment: CrateNewTimeSegment) -> Result<()> {
+        diesel::insert_into(time_segment_table)
+            .values(&NewTimeSegment::from(time_segment.clone()))
+            .execute(&self.get_connection()?)
+            .map_err(|e| Error("while trying to add a time segment", e.into()))?;
+        let id = diesel::select(last_insert_rowid)
+            .get_result::<i32>(&self.get_connection()?)
+            .map_err(|e| Error("while trying to fetch the new time segment", e.into()))?;
+        for range in time_segment.ranges {
+            diesel::insert_into(time_segment_range_table)
+                .values(&TimeSegmentRange {
+                    segment_id: id,
+                    start: range.start.timestamp() as i32,
+                    end: range.end.timestamp() as i32,
+                })
+                .execute(&self.get_connection()?)
                 .map_err(|e| Error("while trying to add a time segment", e.into()))?;
-            let id = diesel::select(last_insert_rowid)
-                .get_result::<i32>(&self.0)
-                .map_err(|e| Error("while trying to fetch the new time segment", e.into()))?;
-            for range in time_segment.ranges {
-                diesel::insert_into(time_segment_range_table)
-                    .values(&TimeSegmentRange {
-                        segment_id: id,
-                        start: range.start.timestamp() as i32,
-                        end: range.end.timestamp() as i32,
-                    })
-                    .execute(&self.0)
-                    .map_err(|e| Error("while trying to add a time segment", e.into()))?;
-            }
-        };
-        LocalFutureObj::new(Box::new(future::ready(result)))
+        }
+        Ok(())
     }
 
-    fn delete_time_segment<'a: 'b, 'b>(
-        &'a self,
-        time_segment: CrateTimeSegment,
-    ) -> LocalFutureObj<'b, Result<()>> {
+    async fn delete_time_segment(&self, time_segment: CrateTimeSegment) -> Result<()> {
         let db_time_segment = TimeSegment::from(time_segment);
         let ranges = TimeSegmentRange::belonging_to(&db_time_segment);
-        let result = try {
-            // Assert that there are no tasks in this time segment
-            let n_tasks = Task::belonging_to(&db_time_segment)
-                .count()
-                .get_result::<i64>(&self.0)
-                .map_err(|e| Error("while trying to delete a time segment", e.into()))?;
-            if n_tasks > 0 {
-                Err(Error(
-                    "while trying to delete a time segment",
-                    failure::format_err!(
-                        "There are still {} task(s) in this time segment. Please move them to \
-                         another time segment or delete them before deleting this segment.",
-                        n_tasks
-                    ),
-                ))?
-            }
 
-            // Assert that this isn't the last time segment
-            let n_time_segments = time_segments::table
-                .count()
-                .get_result::<i64>(&self.0)
-                .map_err(|e| Error("while trying to count time segments", e.into()))?;
-            if n_time_segments <= 1 {
-                Err(Error(
-                    "while trying to delete a time segment",
-                    failure::format_err!(
-                        "If you remove the last time segment, when should I schedule things?"
-                    ),
-                ))?
-            }
+        // Assert that there are no tasks in this time segment
+        let n_tasks = Task::belonging_to(&db_time_segment)
+            .count()
+            .get_result::<i64>(&self.get_connection()?)
+            .map_err(|e| Error("while trying to delete a time segment", e.into()))?;
+        if n_tasks > 0 {
+            Err(Error(
+                "while trying to delete a time segment",
+                failure::format_err!(
+                    "There are still {} task(s) in this time segment. Please move them to \
+                        another time segment or delete them before deleting this segment.",
+                    n_tasks
+                ),
+            ))?
+        }
 
-            diesel::delete(ranges)
-                .execute(&self.0)
-                .map_err(|e| Error("while trying to delete a time segment", e.into()))?;
-            let amount_deleted = diesel::delete(&db_time_segment)
-                .execute(&self.0)
-                .map_err(|e| Error("while trying to delete a time segment", e.into()))?;
-            if amount_deleted != 1 {
-                Err(Error(
-                    "while trying to delete a time segment",
-                    failure::format_err!("{} time segment(s) were deleted", amount_deleted),
-                ))?
-            }
-        };
-        LocalFutureObj::new(Box::new(future::ready(result)))
+        // Assert that this isn't the last time segment
+        let n_time_segments = time_segments::table
+            .count()
+            .get_result::<i64>(&self.get_connection()?)
+            .map_err(|e| Error("while trying to count time segments", e.into()))?;
+        if n_time_segments <= 1 {
+            Err(Error(
+                "while trying to delete a time segment",
+                failure::format_err!(
+                    "If you remove the last time segment, when should I schedule things?"
+                ),
+            ))?
+        }
+
+        diesel::delete(ranges)
+            .execute(&self.get_connection()?)
+            .map_err(|e| Error("while trying to delete a time segment", e.into()))?;
+        let amount_deleted = diesel::delete(&db_time_segment)
+            .execute(&self.get_connection()?)
+            .map_err(|e| Error("while trying to delete a time segment", e.into()))?;
+        if amount_deleted != 1 {
+            Err(Error(
+                "while trying to delete a time segment",
+                failure::format_err!("{} time segment(s) were deleted", amount_deleted),
+            ))?
+        }
+
+        Ok(())
     }
 
-    fn update_time_segment<'a: 'b, 'b>(
-        &'a self,
-        time_segment: CrateTimeSegment,
-    ) -> LocalFutureObj<'b, Result<()>> {
+    async fn update_time_segment(&self, time_segment: CrateTimeSegment) -> Result<()> {
         let db_time_segment = TimeSegment::from(time_segment.clone());
         let ranges = TimeSegmentRange::belonging_to(&db_time_segment);
-        let result = try {
-            diesel::delete(ranges)
-                .execute(&self.0)
+        diesel::delete(ranges)
+            .execute(&self.get_connection()?)
+            .map_err(|e| Error("while trying to update a time segment", e.into()))?;
+        for range in time_segment.ranges {
+            diesel::insert_into(time_segment_range_table)
+                .values(&TimeSegmentRange {
+                    segment_id: time_segment.id as i32,
+                    start: range.start.timestamp() as i32,
+                    end: range.end.timestamp() as i32,
+                })
+                .execute(&self.get_connection()?)
                 .map_err(|e| Error("while trying to update a time segment", e.into()))?;
-            for range in time_segment.ranges {
-                diesel::insert_into(time_segment_range_table)
-                    .values(&TimeSegmentRange {
-                        segment_id: time_segment.id as i32,
-                        start: range.start.timestamp() as i32,
-                        end: range.end.timestamp() as i32,
-                    })
-                    .execute(&self.0)
-                    .map_err(|e| Error("while trying to update a time segment", e.into()))?;
-            }
-            let amount_updated = diesel::update(&db_time_segment)
-                .set(&db_time_segment)
-                .execute(&self.0)
-                .map_err(|e| Error("while trying to update a time segment", e.into()))?;
-            if amount_updated != 1 {
-                Err(Error(
-                    "while trying to update a time segment",
-                    failure::format_err!("{} time segment(s) were updated", amount_updated),
-                ))?
-            }
-        };
-        LocalFutureObj::new(Box::new(future::ready(result)))
+        }
+        let amount_updated = diesel::update(&db_time_segment)
+            .set(&db_time_segment)
+            .execute(&self.get_connection()?)
+            .map_err(|e| Error("while trying to update a time segment", e.into()))?;
+        if amount_updated != 1 {
+            Err(Error(
+                "while trying to update a time segment",
+                failure::format_err!("{} time segment(s) were updated", amount_updated),
+            ))?
+        }
+
+        Ok(())
     }
 
-    fn all_time_segments<'a: 'b, 'b>(
-        &'a self,
-    ) -> LocalFutureObj<'b, Result<Vec<CrateTimeSegment>>> {
-        let time_segments_result = try {
-            let db_time_segments = time_segments::table
-                .load::<TimeSegment>(&self.0)
-                .map_err(|e| Error("while trying to retrieve time segments", e.into()))?;
-            self.construct_time_segments(db_time_segments)?.collect()
-        };
-        LocalFutureObj::new(Box::new(future::ready(time_segments_result)))
+    async fn all_time_segments(&self) -> Result<Vec<CrateTimeSegment>> {
+        let db_time_segments = time_segments::table
+            .load::<TimeSegment>(&self.get_connection()?)
+            .map_err(|e| Error("while trying to retrieve time segments", e.into()))?;
+        Ok(self.construct_time_segments(db_time_segments)?.collect())
     }
 }
 
 impl DbConnection {
+    pub fn get_connection(
+        &self,
+    ) -> Result<r2d2::PooledConnection<r2d2::ConnectionManager<SqliteConnection>>> {
+        self.0
+            .get()
+            .map_err(|e| Error("while connecting to the database", e.into()))
+    }
+
     fn construct_time_segments(
         &self,
         db_time_segments: Vec<TimeSegment>,
     ) -> Result<impl Iterator<Item = CrateTimeSegment>> {
         let ranges = TimeSegmentRange::belonging_to(&db_time_segments)
-            .load::<TimeSegmentRange>(&self.0)
+            .load::<TimeSegmentRange>(&self.get_connection()?)
             .map_err(|e| Error("while trying to retrieve time segments", e.into()))?
             .grouped_by(&db_time_segments)
             .into_iter()
@@ -416,12 +388,20 @@ impl From<CrateTimeSegment> for TimeSegment {
 }
 
 pub fn make_connection(database_url: &str) -> Result<DbConnection> {
-    let connection = SqliteConnection::establish(database_url)
+    let connection_manager = r2d2::ConnectionManager::new(database_url);
+    let connection_pool = r2d2::Pool::builder()
+        .max_size(1)
+        .build(connection_manager)
         .map_err(|e| Error("while trying to connect to the database", e.into()))?;
-    // TODO run instead of run_with_output
-    embedded_migrations::run_with_output(&connection, &mut io::stderr())
-        .map_err(|e| Error("while running migrations", e.into()))?;
-    Ok(DbConnection(connection))
+    {
+        let connection = connection_pool
+            .get()
+            .map_err(|e| Error("while trying to connect to the database", e.into()))?;
+        // TODO run instead of run_with_output
+        embedded_migrations::run_with_output(&connection, &mut io::stderr())
+            .map_err(|e| Error("while running database migrations", e.into()))?;
+    }
+    Ok(DbConnection(connection_pool))
 }
 
 fn i32_to_duration(duration: i32) -> Duration {

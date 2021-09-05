@@ -102,7 +102,7 @@ embed_migrations!();
 
 no_arg_sql_function!(last_insert_rowid, diesel::sql_types::Integer);
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Database for DbConnection {
     async fn add_task(&self, task: crate::NewTask) -> Result<crate::Task> {
         diesel::insert_into(task_table)

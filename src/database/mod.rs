@@ -15,7 +15,7 @@ pub struct Error(pub &'static str, #[cause] pub failure::Error);
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[async_trait]
+#[async_trait(?Send)]
 pub trait Database {
     async fn add_task(&self, task: NewTask) -> Result<Task>;
     async fn delete_task(&self, id: u32) -> Result<()>;

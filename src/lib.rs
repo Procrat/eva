@@ -13,7 +13,6 @@ extern crate assert_matches;
 
 use chrono::prelude::*;
 use chrono::Duration;
-use derive_new::new;
 use failure::Fail;
 
 use crate::configuration::{Configuration, SchedulingStrategy};
@@ -36,7 +35,7 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, new, Clone)]
+#[derive(Debug, Clone)]
 pub struct NewTask {
     pub content: String,
     pub deadline: DateTime<Utc>,

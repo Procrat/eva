@@ -1,44 +1,16 @@
-use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
+use clap::{builder::PossibleValuesParser, Arg, ArgMatches, Command};
 use eva::configuration::Configuration;
 use failure::Fail;
 use futures_executor::block_on;
 use itertools::Itertools;
 
+use crate::error::{Error, Result};
 use crate::pretty_print::PrettyPrint;
 
 mod configuration;
+mod error;
 mod parse;
 mod pretty_print;
-
-#[derive(Debug, Fail)]
-enum Error {
-    #[fail(display = "{}", _0)]
-    Configuration(#[cause] configuration::Error),
-    #[fail(display = "{}", _0)]
-    Parse(#[cause] parse::Error),
-    #[fail(display = "{}", _0)]
-    Eva(#[cause] eva::Error),
-}
-
-impl From<configuration::Error> for Error {
-    fn from(error: configuration::Error) -> Error {
-        Error::Configuration(error)
-    }
-}
-
-impl From<parse::Error> for Error {
-    fn from(error: parse::Error) -> Error {
-        Error::Parse(error)
-    }
-}
-
-impl From<eva::Error> for Error {
-    fn from(error: eva::Error) -> Error {
-        Error::Eva(error)
-    }
-}
-
-type Result<T> = std::result::Result<T, Error>;
 
 fn main() {
     if let Err(error) = run() {
@@ -52,69 +24,69 @@ fn run() -> Result<()> {
     dispatch(&matches, &configuration)
 }
 
-fn cli<'a, 'b>(configuration: &Configuration) -> App<'a, 'b> {
-    let add = SubCommand::with_name("add")
+fn cli(configuration: &Configuration) -> Command {
+    let add = Command::new("add")
         .about("Adds a task")
         .arg(
-            Arg::with_name("content")
+            Arg::new("content")
                 .required(true)
                 .help("What is it that you want to do?"),
         )
-        .arg(Arg::with_name("deadline").required(true).help(
+        .arg(Arg::new("deadline").required(true).help(
             "When should it be finished? \
                    Give it in the format of '2 Aug 2017 14:03'.",
         ))
-        .arg(Arg::with_name("duration").required(true).help(
+        .arg(Arg::new("duration").required(true).help(
             "How long do you estimate it will take? \
                    Give it in a (whole or decimal) number of hours.",
         ))
         .arg(
-            Arg::with_name("importance")
+            Arg::new("importance")
                 .required(true)
                 .help("How important is this task to you on a scale from 1 to 10?"),
         );
-    let rm = SubCommand::with_name("rm")
+    let rm = Command::new("rm")
         .about("Removes a task")
-        .arg(Arg::with_name("task-id").required(true));
-    let set = SubCommand::with_name("set")
+        .arg(Arg::new("task-id").required(true));
+    let set = Command::new("set")
         .about("Changes the deadline, duration, importance or content of an existing task")
-        .arg(Arg::with_name("property").required(true).possible_values(&[
-            "content",
-            "deadline",
-            "duration",
-            "importance",
-        ]))
-        .arg(Arg::with_name("task-id").required(true))
-        .arg(Arg::with_name("value").required(true));
-    let list = SubCommand::with_name("tasks").about("Lists your tasks in the order you added them");
-    let schedule = SubCommand::with_name("schedule")
+        .arg(
+            Arg::new("property")
+                .required(true)
+                .value_parser(PossibleValuesParser::new([
+                    "content",
+                    "deadline",
+                    "duration",
+                    "importance",
+                ])),
+        )
+        .arg(Arg::new("task-id").required(true))
+        .arg(Arg::new("value").required(true));
+    let list = Command::new("tasks").about("Lists your tasks in the order you added them");
+    let schedule = Command::new("schedule")
         .about("Lets Eva suggest a schedule for your tasks")
         .arg(
-            Arg::with_name("strategy")
+            Arg::new("strategy")
                 .long("strategy")
                 .takes_value(true)
-                .possible_values(&["importance", "urgency"])
+                .value_parser(PossibleValuesParser::new(["importance", "urgency"]))
                 .default_value(configuration.scheduling_strategy.as_str()),
         );
 
-    App::new("eva")
+    Command::new("eva")
         .version(env!("CARGO_PKG_VERSION"))
-        .global_setting(AppSettings::ColoredHelp)
-        .setting(AppSettings::SubcommandRequiredElseHelp)
-        .subcommand(add)
-        .subcommand(rm)
-        .subcommand(set)
-        .subcommand(list)
-        .subcommand(schedule)
+        .subcommand_required(true)
+        .arg_required_else_help(true)
+        .subcommands([add, rm, set, list, schedule])
 }
 
 fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
-    match inputs.subcommand() {
-        ("add", Some(submatches)) => {
-            let content = submatches.value_of("content").unwrap();
-            let deadline = submatches.value_of("deadline").unwrap();
-            let duration = submatches.value_of("duration").unwrap();
-            let importance = submatches.value_of("importance").unwrap();
+    match inputs.subcommand().unwrap() {
+        ("add", submatches) => {
+            let content = submatches.get_one::<String>("content").unwrap();
+            let deadline = submatches.get_one::<String>("deadline").unwrap();
+            let duration = submatches.get_one::<String>("duration").unwrap();
+            let importance = submatches.get_one::<String>("importance").unwrap();
             let new_task = eva::NewTask {
                 content: content.to_owned(),
                 deadline: parse::deadline(deadline)?,
@@ -125,19 +97,19 @@ fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
             let _task = block_on(eva::add_task(configuration, new_task))?;
             Ok(())
         }
-        ("rm", Some(submatches)) => {
-            let id = submatches.value_of("task-id").unwrap();
+        ("rm", submatches) => {
+            let id = submatches.get_one::<String>("task-id").unwrap();
             let id = parse::id(id)?;
             Ok(block_on(eva::delete_task(configuration, id))?)
         }
-        ("set", Some(submatches)) => {
-            let field = submatches.value_of("property").unwrap();
-            let id = submatches.value_of("task-id").unwrap();
-            let value = submatches.value_of("value").unwrap();
+        ("set", submatches) => {
+            let field = submatches.get_one::<String>("property").unwrap();
+            let id = submatches.get_one::<String>("task-id").unwrap();
+            let value = submatches.get_one::<String>("value").unwrap();
             let id = parse::id(id)?;
             Ok(set_field(configuration, field, id, value)?)
         }
-        ("tasks", Some(_submatches)) => {
+        ("tasks", _submatches) => {
             let tasks = block_on(eva::tasks(configuration))?;
             if tasks.len() == 0 {
                 println!("No tasks left. Add one with `eva add`.");
@@ -150,8 +122,8 @@ fn dispatch(inputs: &ArgMatches, configuration: &Configuration) -> Result<()> {
             }
             Ok(())
         }
-        ("schedule", Some(submatches)) => {
-            let strategy = submatches.value_of("strategy").unwrap().to_owned();
+        ("schedule", submatches) => {
+            let strategy = submatches.get_one::<String>("strategy").unwrap().to_owned();
             let schedule = block_on(eva::schedule(configuration, &strategy))?;
             println!("{}", schedule.pretty_print());
             Ok(())

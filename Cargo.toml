@@ -22,4 +22,4 @@ take_mut = "0.2"
 
 [dev-dependencies]
 assert_matches = "1.5"
-futures = "0.3"
+futures-test = "0.3"

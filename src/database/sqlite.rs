@@ -415,39 +415,39 @@ fn i32_to_datetime(timestamp: i32) -> DateTime<Utc> {
 
 #[cfg(test)]
 mod tests {
-    use futures::executor::block_on;
+    use futures_test::test;
 
     use super::*;
 
     #[test]
-    fn test_insert_query_and_delete_single_task() {
+    async fn test_insert_query_and_delete_single_task() {
         let connection = make_connection(":memory:").unwrap();
 
         // Fresh database has no tasks
-        assert_eq!(block_on(connection.all_tasks()).unwrap().len(), 0);
+        assert_eq!(connection.all_tasks().await.unwrap().len(), 0);
 
         // Inserting a task and querying for it, returns the same one
         let new_task = test_task();
-        block_on(connection.add_task(new_task.clone())).unwrap();
-        let tasks = block_on(connection.all_tasks()).unwrap();
+        connection.add_task(new_task.clone()).await.unwrap();
+        let tasks = connection.all_tasks().await.unwrap();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0], new_task);
-        let same_task = block_on(connection.get_task(tasks[0].id)).unwrap();
+        let same_task = connection.get_task(tasks[0].id).await.unwrap();
         assert_eq!(tasks[0], same_task);
 
         // Deleting a task leaves the database empty
-        block_on(connection.delete_task(tasks[0].id)).unwrap();
-        assert!(block_on(connection.all_tasks()).unwrap().is_empty());
+        connection.delete_task(tasks[0].id).await.unwrap();
+        assert!(connection.all_tasks().await.unwrap().is_empty());
     }
 
     #[test]
-    fn test_insert_update_query_single_task() {
+    async fn test_insert_update_query_single_task() {
         let connection = make_connection(":memory:").unwrap();
 
         let new_task = test_task();
-        block_on(connection.add_task(new_task)).unwrap();
+        connection.add_task(new_task).await.unwrap();
 
-        let mut tasks = block_on(connection.all_tasks()).unwrap();
+        let mut tasks = connection.all_tasks().await.unwrap();
         let mut task = tasks.pop().unwrap();
         let deadline = Utc.from_utc_datetime(
             &NaiveDateTime::parse_from_str("2015-09-05 23:56:04", "%Y-%m-%d %H:%M:%S").unwrap(),
@@ -456,17 +456,17 @@ mod tests {
         task.deadline = deadline;
         task.duration = Duration::minutes(7);
         task.importance = 100;
-        block_on(connection.update_task(task.clone())).unwrap();
+        connection.update_task(task.clone()).await.unwrap();
 
-        let task_from_db = block_on(connection.get_task(task.id)).unwrap();
+        let task_from_db = connection.get_task(task.id).await.unwrap();
         assert_eq!(task, task_from_db);
     }
 
     #[test]
-    fn test_default_time_segment() {
+    async fn test_default_time_segment() {
         let connection = make_connection(":memory:").unwrap();
 
-        let mut time_segments = block_on(connection.all_time_segments()).unwrap();
+        let mut time_segments = connection.all_time_segments().await.unwrap();
         assert_eq!(time_segments.len(), 1);
         let time_segment = time_segments.pop().unwrap();
         assert_eq!(time_segment.id, 0);
@@ -489,7 +489,7 @@ mod tests {
         assert!(time_segment.hue < 360);
 
         // We shouldn't be able to delete the last time segment
-        let result = block_on(connection.delete_time_segment(time_segment));
+        let result = connection.delete_time_segment(time_segment).await;
         assert_eq!(
             result.unwrap_err().to_string(),
             "A database error occurred while trying to delete a time segment: If you remove the \
@@ -498,14 +498,17 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_query_and_delete_time_segment() {
+    async fn test_insert_query_and_delete_time_segment() {
         let connection = make_connection(":memory:").unwrap();
 
         let time_segment = test_time_segment();
-        block_on(connection.add_time_segment(time_segment.clone())).unwrap();
+        connection
+            .add_time_segment(time_segment.clone())
+            .await
+            .unwrap();
 
         // There should be two segments now, the default and the one we added
-        let mut time_segments = block_on(connection.all_time_segments()).unwrap();
+        let mut time_segments = connection.all_time_segments().await.unwrap();
         assert_eq!(time_segments.len(), 2);
         assert_eq!(time_segments[0].name, "Default");
         assert_eq!(time_segments[1], time_segment);
@@ -513,8 +516,8 @@ mod tests {
         // We should be able to query a task we add to a certain segment
         let mut task = test_task();
         task.time_segment_id = 1;
-        let added_task = block_on(connection.add_task(task.clone())).unwrap();
-        let tasks_per_segment = block_on(connection.all_tasks_per_time_segment()).unwrap();
+        let added_task = connection.add_task(task.clone()).await.unwrap();
+        let tasks_per_segment = connection.all_tasks_per_time_segment().await.unwrap();
         assert_eq!(tasks_per_segment.len(), 2);
         assert_eq!(tasks_per_segment[0].0.name, "Default");
         assert!(tasks_per_segment[0].1.is_empty());
@@ -524,7 +527,7 @@ mod tests {
         // We shouldn't be able to delete the segment because there's still a
         // task in it
         let time_segment = time_segments.pop().unwrap();
-        let result = block_on(connection.delete_time_segment(time_segment.clone()));
+        let result = connection.delete_time_segment(time_segment.clone()).await;
         let error_message = format!("{}", result.unwrap_err());
         assert_eq!(
             error_message,
@@ -533,39 +536,39 @@ mod tests {
              them before deleting this segment."
                 .to_string()
         );
-        let time_segments = block_on(connection.all_time_segments()).unwrap();
+        let time_segments = connection.all_time_segments().await.unwrap();
         assert_eq!(time_segments.len(), 2);
 
         // Once we delete the task, we should also be able to delete the segment
-        block_on(connection.delete_task(added_task.id)).unwrap();
-        block_on(connection.delete_time_segment(time_segment)).unwrap();
-        let time_segments = block_on(connection.all_time_segments()).unwrap();
+        connection.delete_task(added_task.id).await.unwrap();
+        connection.delete_time_segment(time_segment).await.unwrap();
+        let time_segments = connection.all_time_segments().await.unwrap();
         assert_eq!(time_segments.len(), 1);
         assert_eq!(time_segments[0].name, "Default");
     }
 
     #[test]
-    fn test_insert_update_query_time_segment() {
+    async fn test_insert_update_query_time_segment() {
         let connection = make_connection(":memory:").unwrap();
 
-        block_on(connection.add_time_segment(test_time_segment())).unwrap();
-
-        let mut time_segment = block_on(connection.all_time_segments())
-            .unwrap()
-            .pop()
+        connection
+            .add_time_segment(test_time_segment())
+            .await
             .unwrap();
+
+        let mut time_segment = connection.all_time_segments().await.unwrap().pop().unwrap();
         time_segment.name = "changed name".to_string();
         let start = Utc::now().with_nanosecond(0).unwrap() + Duration::days(1);
         time_segment.start = start;
         time_segment.ranges = vec![start..start + Duration::minutes(3)];
         time_segment.period = Duration::minutes(42);
         time_segment.hue = 200;
-        block_on(connection.update_time_segment(time_segment.clone())).unwrap();
-
-        let time_segment_from_db = block_on(connection.all_time_segments())
-            .unwrap()
-            .pop()
+        connection
+            .update_time_segment(time_segment.clone())
+            .await
             .unwrap();
+
+        let time_segment_from_db = connection.all_time_segments().await.unwrap().pop().unwrap();
         assert_eq!(time_segment_from_db, time_segment);
     }
 

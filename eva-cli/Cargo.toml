@@ -11,7 +11,7 @@ config = { version = "0.11", default-features = false, features = ["toml"] }
 directories = "3.0"
 eva = { version = "0.0.1", path = "../", features = ["sqlite"] }
 failure = "0.1"
-futures = "0.3"
+futures-executor = "0.3"
 itertools = "0.10"
 shellexpand = "2.1"
 

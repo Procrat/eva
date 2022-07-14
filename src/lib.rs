@@ -114,15 +114,12 @@ pub async fn schedule(configuration: &Configuration, strategy: &str) -> Result<S
     // Ensure everything is scheduled for some time after the algorithm has
     // finished.
     let start = configuration.now() + Duration::minutes(1);
-
-    configuration
+    let tasks_per_segment = configuration
         .database
         .all_tasks_per_time_segment()
         .await
-        .map_err(Error::Database)
-        .and_then(move |tasks_per_segment| {
-            Schedule::schedule(start, tasks_per_segment, strategy).map_err(Error::Schedule)
-        })
+        .map_err(Error::Database)?;
+    Schedule::schedule(start, tasks_per_segment, strategy).map_err(Error::Schedule)
 }
 
 pub async fn add_time_segment(

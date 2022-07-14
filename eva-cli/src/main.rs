@@ -1,7 +1,7 @@
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 use eva::configuration::Configuration;
 use failure::Fail;
-use futures::executor::block_on;
+use futures_executor::block_on;
 use itertools::Itertools;
 
 use crate::pretty_print::PrettyPrint;

@@ -126,7 +126,7 @@ impl Database for DbConnection {
         if amount_deleted != 1 {
             return Err(Error(
                 "while trying to delete a task",
-                failure::format_err!("{} task(s) were deleted", amount_deleted),
+                format!("{} task(s) were deleted", amount_deleted).into(),
             ));
         }
         Ok(())
@@ -149,7 +149,7 @@ impl Database for DbConnection {
         if amount_updated != 1 {
             return Err(Error(
                 "while trying to update a task",
-                failure::format_err!("{} task(s) were updated", amount_updated),
+                format!("{} task(s) were updated", amount_updated).into(),
             ));
         }
         Ok(())
@@ -213,11 +213,12 @@ impl Database for DbConnection {
         if n_tasks > 0 {
             Err(Error(
                 "while trying to delete a time segment",
-                failure::format_err!(
+                format!(
                     "There are still {} task(s) in this time segment. Please move them to \
                         another time segment or delete them before deleting this segment.",
                     n_tasks
-                ),
+                )
+                .into(),
             ))?
         }
 
@@ -229,9 +230,7 @@ impl Database for DbConnection {
         if n_time_segments <= 1 {
             Err(Error(
                 "while trying to delete a time segment",
-                failure::format_err!(
-                    "If you remove the last time segment, when should I schedule things?"
-                ),
+                "If you remove the last time segment, when should I schedule things?".into(),
             ))?
         }
 
@@ -244,7 +243,7 @@ impl Database for DbConnection {
         if amount_deleted != 1 {
             Err(Error(
                 "while trying to delete a time segment",
-                failure::format_err!("{} time segment(s) were deleted", amount_deleted),
+                format!("{} time segment(s) were deleted", amount_deleted).into(),
             ))?
         }
 
@@ -274,7 +273,7 @@ impl Database for DbConnection {
         if amount_updated != 1 {
             Err(Error(
                 "while trying to update a time segment",
-                failure::format_err!("{} time segment(s) were updated", amount_updated),
+                format!("{} time segment(s) were updated", amount_updated).into(),
             ))?
         }
 

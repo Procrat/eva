@@ -4,8 +4,8 @@ use std::rc::Rc;
 
 use chrono::prelude::*;
 use chrono::Duration;
-use failure::Fail;
 use itertools::Itertools;
+use thiserror::Error;
 
 use crate::configuration::SchedulingStrategy;
 use crate::time_segment::TimeSegment;
@@ -36,25 +36,19 @@ impl Task for crate::Task {
     }
 }
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum Error<TaskT: Debug + Display + Send + Sync + 'static> {
-    #[fail(
-        display = "I could not schedule {} because you {} the deadline.\nYou might want to \
-                   postpone this task or remove it if it's not longer relevant",
-        task, tense
+    #[error(
+        "I could not schedule {task} because you {tense} the deadline.\n\
+        You might want to postpone this task or remove it if it's not longer relevant"
     )]
     DeadlineMissed { task: TaskT, tense: &'static str },
-    #[fail(
-        display = "I could not schedule {} because you don't have enough time to do \
-                   everything.\nYou might want to decide not to do some things or relax their \
-                   deadlines",
-        task
+    #[error(
+        "I could not schedule {task} because you don't have enough time to do everything.\n\
+        You might want to decide not to do some things or relax their deadlines"
     )]
     NotEnoughTime { task: TaskT },
-    #[fail(
-        display = "An internal error occurred (This shouldn't happen.): {}",
-        _0
-    )]
+    #[error("An internal error occurred -- this shouldn't happen: {0}")]
     Internal(&'static str),
 }
 

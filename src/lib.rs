@@ -13,7 +13,7 @@ extern crate assert_matches;
 
 use chrono::prelude::*;
 use chrono::Duration;
-use failure::Fail;
+use thiserror::Error;
 
 use crate::configuration::{Configuration, SchedulingStrategy};
 
@@ -25,12 +25,12 @@ mod scheduling;
 pub mod time_segment;
 mod util;
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum Error {
-    #[fail(display = "{}", _0)]
-    Database(#[cause] crate::database::Error),
-    #[fail(display = "{}", _0)]
-    Schedule(#[cause] crate::scheduling::Error<Task>),
+    #[error(transparent)]
+    Database(#[from] crate::database::Error),
+    #[error(transparent)]
+    Schedule(#[from] crate::scheduling::Error<Task>),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -18,9 +18,9 @@ cfg-if = "1.0"
 chrono = { version = "0.4", default-features = false, features = ["oldtime"] }
 diesel = { version = "1.4", default-features = false, features = ["r2d2"], optional = true }
 diesel_migrations = { version = "1.4", optional = true }
-failure = "0.1"
 itertools = "0.10"
 take_mut = "0.2"
+thiserror = "1.0"
 
 [dev-dependencies]
 assert_matches = "1.5"

@@ -1,16 +1,29 @@
+use std::fmt;
+
 use chrono::prelude::*;
 use chrono::Duration;
-use failure::Fail;
 
-#[derive(Debug, Fail)]
-#[fail(
-    display = "I don't understand the {} you gave ({}). {}",
-    type_, input, suggestion
-)]
+#[derive(Debug)]
 pub struct Error {
     type_: String,
     input: String,
     suggestion: String,
+}
+
+impl std::error::Error for Error {}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Error {
+            type_,
+            input,
+            suggestion,
+        } = self;
+        write!(
+            f,
+            "I don't understand the {type_} you gave ({input:?}). {suggestion}"
+        )
+    }
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -50,12 +63,12 @@ pub fn duration(duration_hours: &str) -> Result<Duration> {
 }
 
 pub fn deadline(datetime: &str) -> Result<DateTime<Utc>> {
-    Local
+    let local_datetime = Local
         .datetime_from_str(datetime, "%-d %b %Y %-H:%M")
         .map_err(|_| Error {
             type_: "deadline".to_owned(),
             input: datetime.to_owned(),
-            suggestion: "Try entering something like '4 Jul 2017 6:05'.".to_owned(),
-        })
-        .map(|local_datetime| local_datetime.with_timezone(&Utc))
+            suggestion: "Try entering something like \"4 Jul 2017 6:05\".".to_owned(),
+        })?;
+    Ok(local_datetime.with_timezone(&Utc))
 }

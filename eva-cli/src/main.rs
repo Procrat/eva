@@ -1,14 +1,15 @@
+use std::env;
+use std::process;
+
+use anyhow::{Error, Result};
 use clap::{builder::PossibleValuesParser, Arg, ArgMatches, Command};
 use eva::configuration::Configuration;
-use failure::Fail;
 use futures_executor::block_on;
 use itertools::Itertools;
 
-use crate::error::{Error, Result};
 use crate::pretty_print::PrettyPrint;
 
 mod configuration;
-mod error;
 mod parse;
 mod pretty_print;
 
@@ -20,8 +21,8 @@ fn main() {
 
 fn run() -> Result<()> {
     let configuration = configuration::read()?;
-    let matches = cli(&configuration).get_matches();
-    dispatch(&matches, &configuration)
+    let arguments = cli(&configuration).get_matches();
+    dispatch(&arguments, &configuration)
 }
 
 fn cli(configuration: &Configuration) -> Command {
@@ -145,12 +146,11 @@ fn set_field(configuration: &Configuration, field: &str, id: u32, value: &str) -
 }
 
 fn handle_error(error: &Error) {
-    eprintln!("{}", error);
+    eprintln!("{error}");
 
-    // Print backtrace when RUST_BACKTRACE=1
-    if let Some(backtrace) = error.backtrace() {
-        eprintln!("{:?}", backtrace);
+    if env::var("RUST_BACKTRACE").map_or(false, |v| v == "1") {
+        eprintln!("\n{}", error.backtrace());
     }
 
-    ::std::process::exit(1);
+    process::exit(1);
 }

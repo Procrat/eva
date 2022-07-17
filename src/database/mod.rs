@@ -11,7 +11,10 @@ pub mod sqlite;
 
 #[derive(Debug, Error)]
 #[error("A database error occurred {0}: {1}")]
-pub struct Error(pub &'static str, #[source] pub Box<dyn std::error::Error>);
+pub struct Error(
+    pub &'static str,
+    #[source] pub Box<dyn std::error::Error + Send + Sync>,
+);
 
 pub type Result<T> = std::result::Result<T, Error>;
 

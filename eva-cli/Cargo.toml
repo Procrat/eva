@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 anyhow = "1.0"
 chrono = "0.4"
-clap = { version = "3.2", features = ["wrap_help"] }
+clap = { version = "4.0", features = ["wrap_help"] }
 config = { version = "0.13", default-features = false, features = ["toml"] }
 directories = "4.0"
 eva = { version = "0.0.1", path = "../", features = ["sqlite"] }

@@ -1,4 +1,4 @@
-#![feature(box_patterns)]
+// #![feature(box_patterns)]
 
 #[cfg(feature = "sqlite")]
 #[macro_use]
